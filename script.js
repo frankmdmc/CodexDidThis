@@ -4,6 +4,7 @@ async function fetchTicket() {
   document.getElementById('results').textContent = 'Loading...';
   try {
     const res = await fetch('https://corsproxy.io/?' + encodeURIComponent(url));
+
     if (!res.ok) throw new Error('Fetch failed');
     const html = await res.text();
     const parser = new DOMParser();
@@ -67,3 +68,4 @@ if (select) {
     input.value = select.value;
   });
 }
+
