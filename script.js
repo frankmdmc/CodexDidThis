@@ -7,6 +7,7 @@ async function fetchTicket() {
     // `allorigins` expects the target URL in the `url` query parameter
     const proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
     const res = await fetch(proxyUrl);
+
     if (!res.ok) throw new Error('Fetch failed');
     const html = await res.text();
     const parser = new DOMParser();
