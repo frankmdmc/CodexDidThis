@@ -3,7 +3,8 @@ async function fetchTicket() {
   if (!url) return;
   document.getElementById('results').textContent = 'Loading...';
   try {
-    const res = await fetch(url);
+    const res = await fetch('https://corsproxy.io/?' + encodeURIComponent(url));
+
     if (!res.ok) throw new Error('Fetch failed');
     const html = await res.text();
     const parser = new DOMParser();
@@ -59,3 +60,12 @@ async function fetchTicket() {
 }
 
 document.getElementById('calc').addEventListener('click', fetchTicket);
+const select = document.getElementById('ticketSelect');
+if (select) {
+  const input = document.getElementById('ticketUrl');
+  input.value = select.value;
+  select.addEventListener('change', () => {
+    input.value = select.value;
+  });
+}
+
