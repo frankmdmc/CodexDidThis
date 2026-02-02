@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Scratch Ticket Fetch Debug</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 2em; background: #f6f6f6; color: #222; }
+  main { max-width: 880px; margin: 0 auto; background: #fff; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06); }
+  label { font-weight: 600; display: block; margin-top: 1rem; }
+  input[type=text] { width: 100%; max-width: 560px; padding: 0.5rem; border-radius: 6px; border: 1px solid #ccc; }
+  button { margin-top: 1rem; padding: 0.6rem 1.2rem; border-radius: 6px; border: none; background: #1b6ef3; color: #fff; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
+  pre { margin-top: 1.5rem; background: #0b1b33; color: #f4f6fb; padding: 1rem; border-radius: 8px; white-space: pre-wrap; }
+  .helper { color: #555; font-size: 0.95rem; }
+  a { color: #1b6ef3; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Scratch Ticket Fetch Debug</h1>
+  <p class="helper">
+    This page runs verbose diagnostics for the proxy fetches used by the main app.
+    Paste the results back into the issue so we can see which proxy (if any) is failing.
+  </p>
+  <label for="debugUrl">Ticket URL</label>
+  <input id="debugUrl" type="text" placeholder="https://www.calottery.com/..." />
+  <button id="runDebug" type="button">Run Diagnostics</button>
+  <pre id="debugOutput">Waiting for input...</pre>
+  <p class="helper">
+    Return to the <a href="index.html">main calculator</a>.
+  </p>
+</main>
+<script src="debug.js"></script>
+</body>
+</html>
