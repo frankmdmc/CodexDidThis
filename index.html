@@ -4,23 +4,38 @@
 <meta charset="UTF-8">
 <title>Scratch Ticket EV</title>
 <style>
-  body { font-family: Arial, sans-serif; margin: 2em; }
-  input[type=text] { width: 400px; }
-  #results { margin-top: 2em; white-space: pre-wrap; }
+  body { font-family: Arial, sans-serif; margin: 2em; background: #f6f6f6; color: #222; }
+  main { max-width: 880px; margin: 0 auto; background: #fff; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06); }
+  label { font-weight: 600; display: block; margin-top: 1rem; }
+  input[type=text], select { width: 100%; max-width: 520px; padding: 0.5rem; border-radius: 6px; border: 1px solid #ccc; }
+  button { margin-top: 1rem; padding: 0.6rem 1.2rem; border-radius: 6px; border: none; background: #1b6ef3; color: #fff; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
+  #results { margin-top: 1.5rem; white-space: pre-wrap; background: #0b1b33; color: #f4f6fb; padding: 1rem; border-radius: 8px; }
+  #status { margin-top: 0.75rem; color: #c45500; font-weight: 600; }
+  .helper { color: #555; font-size: 0.95rem; }
 </style>
 </head>
 <body>
-<h1>California Scratch Ticket Expected Value</h1>
-<label for="ticketSelect">Choose a scratcher: </label>
-<select id="ticketSelect">
-  <option value="https://www.calottery.com/en/scratchers/$3/california-crossword-1676">California Crossword (1676)</option>
-  <option value="https://www.calottery.com/en/scratchers/$3/loteria-1666">Loteria (1666)</option>
-</select>
-<br/><br/>
+<main>
+  <h1>California Scratch Ticket Expected Value</h1>
+  <p class="helper">Pick a known scratcher or paste any California Lottery scratcher URL to estimate expected ticket value from the remaining prizes table.</p>
+  <label for="ticketSelect">Choose a scratcher</label>
+  <select id="ticketSelect">
+    <option value="https://www.calottery.com/en/scratchers/$3/california-crossword-1676">California Crossword (1676)</option>
+    <option value="https://www.calottery.com/en/scratchers/$3/loteria-1666">Loteria (1666)</option>
+  </select>
 
-<label>Ticket URL: <input id="ticketUrl" type="text" placeholder="https://www.calottery.com/..." /></label>
-<button id="calc">Calculate</button>
-<div id="results"></div>
+  <label for="ticketUrl">Ticket URL</label>
+  <input id="ticketUrl" type="text" placeholder="https://www.calottery.com/..." />
+  <button id="calc" type="button">Calculate</button>
+  <div id="status" role="status" aria-live="polite"></div>
+  <div id="results" aria-live="polite"></div>
+  <p class="helper">
+    Seeing "Fetch failed"? Use the
+    <a href="debug.html">debug page</a>
+    to capture diagnostics for the proxy fetches.
+  </p>
+</main>
 <script src="script.js"></script>
 </body>
 </html>
