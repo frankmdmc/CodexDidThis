@@ -97,22 +97,48 @@ async function fetchTicket() {
 
   try {
     setLoading(true);
-    const html = await fetchTicketHtml(url);
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
+    const { doc, prizeTable } = await fetchTicketDocument(url);
 
     const xp = (path) => doc.evaluate(path, doc, null, XPathResult.STRING_TYPE, null).stringValue.trim();
+    const findTextByLabel = (label) => {
+      const lowerLabel = label.toLowerCase();
+      const elements = doc.querySelectorAll('p, li, div');
+      for (const el of elements) {
+        const text = el.textContent.trim();
+        if (text.toLowerCase().includes(lowerLabel)) {
+          const strong = el.querySelector('strong');
+          if (strong?.textContent.trim()) {
+            return strong.textContent.trim();
+          }
+          const match = text.split(':').slice(1).join(':').trim();
+          if (match) {
+            return match;
+          }
+        }
+      }
+      return '';
+    };
     const data = {};
     data.name = xp('/html/head/title') || 'Unknown ticket';
-    data.cost = xp('//*[@id="section-content-1-1"]//p[contains(text(),"Price") or contains(text(),"Cost")]/strong');
-    data.gameNumber = xp('//*[@id="section-content-1-1"]//p[contains(text(),"Game")]/strong');
-    data.overallOdds = xp('//*[@id="section-content-1-1"]//p[contains(text(),"Overall Odds")]/strong');
-    data.cashOdds = xp('//*[@id="section-content-1-1"]//p[contains(text(),"Cash Odds")]/strong');
+    data.cost =
+      xp('//*[@id="section-content-1-1"]//p[contains(text(),"Price") or contains(text(),"Cost")]/strong') ||
+      findTextByLabel('Price') ||
+      findTextByLabel('Cost');
+    data.gameNumber =
+      xp('//*[@id="section-content-1-1"]//p[contains(text(),"Game")]/strong') || findTextByLabel('Game Number');
+    data.overallOdds =
+      xp('//*[@id="section-content-1-1"]//p[contains(text(),"Overall Odds")]/strong') ||
+      findTextByLabel('Overall Odds');
+    data.cashOdds =
+      xp('//*[@id="section-content-1-1"]//p[contains(text(),"Cash Odds")]/strong') ||
+      findTextByLabel('Cash Odds');
 
     const prizes = [];
-    const rows = doc.querySelectorAll('#section-content-1-3 table tbody tr');
+    const rows = prizeTable.querySelectorAll('tbody tr').length
+      ? prizeTable.querySelectorAll('tbody tr')
+      : prizeTable.querySelectorAll('tr');
     rows.forEach((row, index) => {
-      if (index === 0) return;
+      if (index === 0 && row.querySelectorAll('th').length) return;
       const cells = row.querySelectorAll('td');
       if (cells.length < 3) return;
       const { remaining, initial } = parsePrizeCounts(cells[2]);
@@ -145,7 +171,10 @@ async function fetchTicket() {
       throw new Error('Could not calculate remaining prizes. Missing prize counts.');
     }
 
-    const overall = parseFloat((data.overallOdds.match(/[0-9.]+/) || ['0'])[0]);
+    const oddsMatch = data.overallOdds.match(/1\s*in\s*([0-9.]+)/i);
+    const overall = oddsMatch
+      ? parseFloat(oddsMatch[1])
+      : parseFloat((data.overallOdds.match(/[0-9.]+/) || ['0'])[0]);
     if (!overall) {
       throw new Error('Overall odds were not found. The ticket page may have changed.');
     }
