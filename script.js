@@ -133,6 +133,32 @@ const median = (values) => {
   return sorted[mid];
 };
 
+const parseOddsValue = (text) => {
+  if (!text) return 0;
+  const match = text.match(/1\s*in\s*([0-9.,]+)/i);
+  if (match) {
+    return parseFloat(match[1].replace(/,/g, '')) || 0;
+  }
+  return parseFloat(text.replace(/[^0-9.]+/g, '')) || 0;
+};
+
+const extractLabelValue = (doc, labelRegex, valueRegex) => {
+  const elements = doc.querySelectorAll('p, li, div, span');
+  for (const el of elements) {
+    const text = el.textContent.replace(/\s+/g, ' ').trim();
+    if (!labelRegex.test(text)) continue;
+    const strong = el.querySelector('strong');
+    if (strong?.textContent.trim()) {
+      return strong.textContent.trim();
+    }
+    if (valueRegex) {
+      const match = text.match(valueRegex);
+      if (match?.[1]) return match[1].trim();
+    }
+  }
+  return '';
+};
+
 const parsePrizeCounts = (cell) => {
   if (!cell) return { remaining: '', initial: '' };
   const spans = cell.querySelectorAll('span');
@@ -188,16 +214,16 @@ async function fetchTicket() {
     data.name = xp('/html/head/title') || 'Unknown ticket';
     data.cost =
       xp('//*[@id="section-content-1-1"]//p[contains(text(),"Price") or contains(text(),"Cost")]/strong') ||
-      findTextByLabel('Price') ||
-      findTextByLabel('Cost');
+      extractLabelValue(doc, /(price|cost)/i, /(?:price|cost)\s*:?\s*(\$?[0-9.,]+)/i);
     data.gameNumber =
-      xp('//*[@id="section-content-1-1"]//p[contains(text(),"Game")]/strong') || findTextByLabel('Game Number');
+      xp('//*[@id="section-content-1-1"]//p[contains(text(),"Game Number")]/strong') ||
+      extractLabelValue(doc, /game\s*number/i, /game\s*number\s*:?\s*([0-9]+)/i);
     data.overallOdds =
       xp('//*[@id="section-content-1-1"]//p[contains(text(),"Overall Odds")]/strong') ||
-      findTextByLabel('Overall Odds');
+      extractLabelValue(doc, /overall\s*odds/i, /(1\s*in\s*[0-9.,]+)/i);
     data.cashOdds =
       xp('//*[@id="section-content-1-1"]//p[contains(text(),"Cash Odds")]/strong') ||
-      findTextByLabel('Cash Odds');
+      extractLabelValue(doc, /cash\s*odds/i, /(1\s*in\s*[0-9.,]+)/i);
 
     const prizes = [];
     const rows = prizeTable.querySelectorAll('tbody tr').length
@@ -230,8 +256,7 @@ async function fetchTicket() {
       p.remaining = num(p.remaining);
       p.initial = num(p.initial);
       p.oddsRaw = p.odds;
-      const oddsMatch = p.oddsRaw.match(/1\s*in\s*([0-9.]+)/i);
-      p.oddsValue = oddsMatch ? parseFloat(oddsMatch[1]) : num(p.oddsRaw);
+      p.oddsValue = parseOddsValue(p.oddsRaw);
       p.totalTicketsEstimate = p.remaining && p.oddsValue ? p.remaining * p.oddsValue : 0;
       initialWinning += p.initial;
       currentWinning += p.remaining;
@@ -241,7 +266,16 @@ async function fetchTicket() {
       throw new Error('Could not calculate remaining prizes. Missing prize counts.');
     }
 
-    const totalRemainingTickets = median(prizes.map((p) => p.totalTicketsEstimate));
+    const ticketTier = prizes.find((p) => /ticket/i.test(p.prize));
+    let totalRemainingTickets = 0;
+    if (ticketTier && ticketTier.initial && ticketTier.oddsValue) {
+      const initialTotalTickets = ticketTier.initial * ticketTier.oddsValue;
+      const remainingRatio = ticketTier.remaining / ticketTier.initial;
+      totalRemainingTickets = initialTotalTickets * remainingRatio;
+    }
+    if (!totalRemainingTickets) {
+      totalRemainingTickets = median(prizes.map((p) => p.totalTicketsEstimate));
+    }
     if (!totalRemainingTickets) {
       throw new Error('Could not calculate remaining ticket totals from prize odds.');
     }
@@ -253,7 +287,12 @@ async function fetchTicket() {
     });
 
     data.expectedValue = (evPrize - ticketCost).toFixed(4);
-    const out = `Name: ${data.name}\nCost: ${data.cost}\nGame Number: ${data.gameNumber}\nOverall Odds: ${data.overallOdds}\nCash Odds: ${data.cashOdds}\nExpected Ticket Value: ${data.expectedValue}`;
+    const displayValue = (value) => (value ? value : 'n/a');
+    const out = `Name: ${displayValue(data.name)}\nCost: ${displayValue(data.cost)}\nGame Number: ${displayValue(
+      data.gameNumber
+    )}\nOverall Odds: ${displayValue(data.overallOdds)}\nCash Odds: ${displayValue(
+      data.cashOdds
+    )}\nExpected Ticket Value: ${data.expectedValue}`;
     results.textContent = out;
     if (reconstructedTable) {
       const tableRows = prizes
@@ -270,8 +309,11 @@ async function fetchTicket() {
           </tr>`
         )
         .join('');
+      const estimationNote = ticketTier
+        ? 'We anchor total remaining tickets to the Ticket tier, then compute probabilities as Remaining ÷ total.'
+        : 'We estimate total remaining tickets from each tier as Remaining × (1 in N odds), then use the median of those estimates to compute probabilities.';
       reconstructedTable.innerHTML = `
-        <p class="note">We estimate total remaining tickets from each tier as Remaining × (1 in N odds), then use the median of those estimates to compute probabilities.</p>
+        <p class="note">${estimationNote}</p>
         <table>
           <thead>
             <tr>
@@ -295,18 +337,23 @@ async function fetchTicket() {
     if (mathExample) {
       const sample = prizes.find((p) => p.totalTicketsEstimate);
       if (sample) {
+        const ticketRatio =
+          ticketTier && ticketTier.initial ? ticketTier.remaining / ticketTier.initial : 0;
+        const anchorText = ticketTier
+          ? `Ticket tier anchor: ${formatNumber(ticketTier.remaining)} ÷ ${formatNumber(
+              ticketTier.initial
+            )} = ${formatNumber(ticketRatio)} remaining ratio.`
+          : `Median total tickets across tiers = ${formatNumber(totalRemainingTickets)}.`;
         mathExample.textContent = `Example: For ${sample.prize}, total tickets estimate ≈ ${formatNumber(
           sample.remaining
         )} × ${formatNumber(sample.oddsValue)} = ${formatNumber(
           sample.totalTicketsEstimate
-        )}. Median total tickets across tiers = ${formatNumber(
-          totalRemainingTickets
-        )}. Probability = ${formatNumber(sample.remaining)} ÷ ${formatNumber(
+        )}. ${anchorText} Probability = ${formatNumber(sample.remaining)} ÷ ${formatNumber(
           totalRemainingTickets
         )} = ${formatNumber(sample.probability)}. Expected value contribution = probability × prize value.`;
       } else {
         mathExample.textContent =
-          'Example: Total tickets are estimated as Remaining × (1 in N odds). Probability is Remaining divided by the median total tickets.';
+          'Example: Total tickets are estimated as Remaining × (1 in N odds). Probability is Remaining divided by the estimated total tickets.';
       }
     }
     setStatus('Calculation complete.');
