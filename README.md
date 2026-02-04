@@ -20,5 +20,6 @@ Share the output so we can identify which proxy is failing.
 The script scrapes the prize table and other details using XPath selectors similar to those used with `IMPORTXML` in Google Sheets. It then computes an estimated expected value by scaling the number of non‑winning tickets according to the ratio of remaining winning tickets.
 
 **Note:** This tool relies on the structure of the California Lottery website. If the site's HTML changes or if cross-origin requests are blocked, the script may not work without adjustments.
-To avoid cross-origin restrictions, the page fetches scratcher URLs through the
-public `api.allorigins.win` proxy.
+To avoid cross-origin restrictions, the page fetches scratcher URLs through
+multiple public proxies (including `api.allorigins.win` and `r.jina.ai`) so it
+can fall back when one provider is unavailable.
