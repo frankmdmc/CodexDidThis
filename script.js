@@ -3,6 +3,8 @@ const statusMessage = document.getElementById('status');
 const calcButton = document.getElementById('calc');
 const input = document.getElementById('ticketUrl');
 const select = document.getElementById('ticketSelect');
+const reconstructedTable = document.getElementById('reconstructedTable');
+const mathExample = document.getElementById('mathExample');
 
 const setStatus = (message = '') => {
   statusMessage.textContent = message;
@@ -12,20 +14,150 @@ const setLoading = (loading) => {
   calcButton.disabled = loading;
   if (loading) {
     results.textContent = '';
+    if (reconstructedTable) reconstructedTable.innerHTML = '';
+    if (mathExample) mathExample.textContent = '';
     setStatus('Loading ticket data...');
   }
 };
 
-const fetchTicketHtml = async (url) => {
-  const proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
-  const res = await fetch(proxyUrl);
-  if (!res.ok) {
-    throw new Error('Fetch failed. The proxy might be unavailable.');
+const proxies = [
+  {
+    name: 'allorigins raw',
+    buildUrl: (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  },
+  {
+    name: 'allorigins get',
+    buildUrl: (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+    parse: (text) => {
+      try {
+        const data = JSON.parse(text);
+        return {
+          content: data.contents || '',
+          warning: data.status?.http_code ? `HTTP ${data.status.http_code}` : '',
+        };
+      } catch (error) {
+        return { content: '', warning: `JSON parse error: ${error.message}` };
+      }
+    },
+  },
+  {
+    name: 'r.jina.ai',
+    buildUrl: (url) => `https://r.jina.ai/http://${url.replace(/^https?:\/\//, '')}`,
+  },
+];
+
+const findPrizeTable = (doc) => {
+  const tables = Array.from(doc.querySelectorAll('table'));
+  for (const table of tables) {
+    const headerCells = Array.from(table.querySelectorAll('thead th'));
+    const headerText = headerCells.map((cell) => cell.textContent.trim().toLowerCase()).join(' ');
+    const hasPrize = headerText.includes('prize');
+    const hasRemaining = headerText.includes('remaining');
+    const hasOdds = headerText.includes('odds');
+    if (hasPrize && hasRemaining) {
+      return table;
+    }
+    if (headerCells.length === 0) {
+      const firstRow = table.querySelector('tr');
+      if (!firstRow) continue;
+      const rowText = Array.from(firstRow.querySelectorAll('td, th'))
+        .map((cell) => cell.textContent.trim().toLowerCase())
+        .join(' ');
+      if (rowText.includes('prize') && rowText.includes('remaining')) {
+        return table;
+      }
+    }
+    if (hasPrize && hasOdds) {
+      return table;
+    }
   }
-  return res.text();
+  return null;
+};
+
+const fetchTicketDocument = async (url) => {
+  const errors = [];
+  for (const proxy of proxies) {
+    try {
+      setStatus(`Fetching via ${proxy.name}...`);
+      const res = await fetch(proxy.buildUrl(url));
+      const text = await res.text();
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const parsed = proxy.parse ? proxy.parse(text) : { content: text, warning: '' };
+      const content = parsed.content?.trim() || '';
+      if (!content) {
+        throw new Error(parsed.warning || 'Empty response');
+      }
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(content, 'text/html');
+      const prizeTable = findPrizeTable(doc);
+      if (!prizeTable) {
+        throw new Error('No prize table found in response.');
+      }
+      return { doc, prizeTable };
+    } catch (error) {
+      errors.push(`${proxy.name}: ${error.message}`);
+    }
+  }
+  throw new Error(`Fetch failed. Tried ${errors.length} proxies. ${errors.join(' | ')}`);
 };
 
 const textFromCell = (cell) => (cell ? cell.textContent.trim() : '');
+
+const escapeHtml = (value) =>
+  String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const formatNumber = (value) => {
+  if (!Number.isFinite(value)) return 'n/a';
+  return value.toLocaleString('en-US', { maximumFractionDigits: 6 });
+};
+
+const formatCurrency = (value) => {
+  if (!Number.isFinite(value)) return 'n/a';
+  return value.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
+};
+
+const median = (values) => {
+  const sorted = values.filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
+  if (!sorted.length) return 0;
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    return (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+  return sorted[mid];
+};
+
+const parseOddsValue = (text) => {
+  if (!text) return 0;
+  const match = text.match(/1\s*in\s*([0-9.,]+)/i);
+  if (match) {
+    return parseFloat(match[1].replace(/,/g, '')) || 0;
+  }
+  return parseFloat(text.replace(/[^0-9.]+/g, '')) || 0;
+};
+
+const extractLabelValue = (doc, labelRegex, valueRegex) => {
+  const elements = doc.querySelectorAll('p, li, div, span');
+  for (const el of elements) {
+    const text = el.textContent.replace(/\s+/g, ' ').trim();
+    if (!labelRegex.test(text)) continue;
+    const strong = el.querySelector('strong');
+    if (strong?.textContent.trim()) {
+      return strong.textContent.trim();
+    }
+    if (valueRegex) {
+      const match = text.match(valueRegex);
+      if (match?.[1]) return match[1].trim();
+    }
+  }
+  return '';
+};
 
 const parsePrizeCounts = (cell) => {
   if (!cell) return { remaining: '', initial: '' };
@@ -57,22 +189,30 @@ async function fetchTicket() {
 
   try {
     setLoading(true);
-    const html = await fetchTicketHtml(url);
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
+    const { doc, prizeTable } = await fetchTicketDocument(url);
 
     const xp = (path) => doc.evaluate(path, doc, null, XPathResult.STRING_TYPE, null).stringValue.trim();
     const data = {};
     data.name = xp('/html/head/title') || 'Unknown ticket';
-    data.cost = xp('//*[@id="section-content-1-1"]//p[contains(text(),"Price") or contains(text(),"Cost")]/strong');
-    data.gameNumber = xp('//*[@id="section-content-1-1"]//p[contains(text(),"Game")]/strong');
-    data.overallOdds = xp('//*[@id="section-content-1-1"]//p[contains(text(),"Overall Odds")]/strong');
-    data.cashOdds = xp('//*[@id="section-content-1-1"]//p[contains(text(),"Cash Odds")]/strong');
+    data.cost =
+      xp('//*[@id="section-content-1-1"]//p[contains(text(),"Price") or contains(text(),"Cost")]/strong') ||
+      extractLabelValue(doc, /(price|cost)/i, /(?:price|cost)\s*:?\s*(\$?[0-9.,]+)/i);
+    data.gameNumber =
+      xp('//*[@id="section-content-1-1"]//p[contains(text(),"Game Number")]/strong') ||
+      extractLabelValue(doc, /game\s*number/i, /game\s*number\s*:?\s*([0-9]+)/i);
+    data.overallOdds =
+      xp('//*[@id="section-content-1-1"]//p[contains(text(),"Overall Odds")]/strong') ||
+      extractLabelValue(doc, /overall\s*odds/i, /(1\s*in\s*[0-9.,]+)/i);
+    data.cashOdds =
+      xp('//*[@id="section-content-1-1"]//p[contains(text(),"Cash Odds")]/strong') ||
+      extractLabelValue(doc, /cash\s*odds/i, /(1\s*in\s*[0-9.,]+)/i);
 
     const prizes = [];
-    const rows = doc.querySelectorAll('#section-content-1-3 table tbody tr');
+    const rows = prizeTable.querySelectorAll('tbody tr').length
+      ? prizeTable.querySelectorAll('tbody tr')
+      : prizeTable.querySelectorAll('tr');
     rows.forEach((row, index) => {
-      if (index === 0) return;
+      if (index === 0 && row.querySelectorAll('th').length) return;
       const cells = row.querySelectorAll('td');
       if (cells.length < 3) return;
       const { remaining, initial } = parsePrizeCounts(cells[2]);
@@ -97,6 +237,9 @@ async function fetchTicket() {
       p.value = /ticket/i.test(p.prize) ? ticketCost : num(p.prize);
       p.remaining = num(p.remaining);
       p.initial = num(p.initial);
+      p.oddsRaw = p.odds;
+      p.oddsValue = parseOddsValue(p.oddsRaw);
+      p.totalTicketsEstimate = p.remaining && p.oddsValue ? p.remaining * p.oddsValue : 0;
       initialWinning += p.initial;
       currentWinning += p.remaining;
     });
@@ -105,26 +248,96 @@ async function fetchTicket() {
       throw new Error('Could not calculate remaining prizes. Missing prize counts.');
     }
 
-    const overall = parseFloat((data.overallOdds.match(/[0-9.]+/) || ['0'])[0]);
-    if (!overall) {
-      throw new Error('Overall odds were not found. The ticket page may have changed.');
+    const ticketTier = prizes.find((p) => /ticket/i.test(p.prize));
+    let totalRemainingTickets = 0;
+    if (ticketTier && ticketTier.initial && ticketTier.oddsValue) {
+      const initialTotalTickets = ticketTier.initial * ticketTier.oddsValue;
+      const remainingRatio = ticketTier.remaining / ticketTier.initial;
+      totalRemainingTickets = initialTotalTickets * remainingRatio;
     }
-    const totalInitial = initialWinning * overall;
-    const initialLosing = totalInitial - initialWinning;
-    const currentLosing = initialLosing * (currentWinning / initialWinning);
-    const totalRemaining = currentWinning + currentLosing;
-    if (!totalRemaining) {
-      throw new Error('Could not calculate remaining ticket totals.');
+    if (!totalRemainingTickets) {
+      totalRemainingTickets = median(prizes.map((p) => p.totalTicketsEstimate));
+    }
+    if (!totalRemainingTickets) {
+      throw new Error('Could not calculate remaining ticket totals from prize odds.');
     }
 
     let evPrize = 0;
     prizes.forEach((p) => {
-      evPrize += (p.remaining / totalRemaining) * p.value;
+      p.probability = p.remaining / totalRemainingTickets;
+      evPrize += p.probability * p.value;
     });
 
     data.expectedValue = (evPrize - ticketCost).toFixed(4);
-    const out = `Name: ${data.name}\nCost: ${data.cost}\nGame Number: ${data.gameNumber}\nOverall Odds: ${data.overallOdds}\nCash Odds: ${data.cashOdds}\nExpected Ticket Value: ${data.expectedValue}`;
+    const displayValue = (value) => (value ? value : 'n/a');
+    const out = `Name: ${displayValue(data.name)}\nCost: ${displayValue(data.cost)}\nGame Number: ${displayValue(
+      data.gameNumber
+    )}\nOverall Odds: ${displayValue(data.overallOdds)}\nCash Odds: ${displayValue(
+      data.cashOdds
+    )}\nExpected Ticket Value: ${data.expectedValue}`;
     results.textContent = out;
+    if (reconstructedTable) {
+      const tableRows = prizes
+        .map(
+          (p) => `<tr>
+            <td>${escapeHtml(p.prize)}</td>
+            <td>${escapeHtml(p.oddsRaw)}</td>
+            <td>${formatNumber(p.remaining)}</td>
+            <td>${formatNumber(p.initial)}</td>
+            <td>${formatNumber(p.oddsValue)}</td>
+            <td>${formatNumber(p.totalTicketsEstimate)}</td>
+            <td>${formatNumber(p.probability)}</td>
+            <td>${formatCurrency(p.value)}</td>
+          </tr>`
+        )
+        .join('');
+      const estimationNote = ticketTier
+        ? 'We anchor total remaining tickets to the Ticket tier, then compute probabilities as Remaining ÷ total.'
+        : 'We estimate total remaining tickets from each tier as Remaining × (1 in N odds), then use the median of those estimates to compute probabilities.';
+      reconstructedTable.innerHTML = `
+        <p class="note">${estimationNote}</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Prize</th>
+              <th>Odds (1 in N)</th>
+              <th>Remaining</th>
+              <th>Total</th>
+              <th>Parsed N</th>
+              <th>Estimated Total Tickets (X×N)</th>
+              <th>Probability</th>
+              <th>Prize Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tableRows}
+          </tbody>
+        </table>
+        <p class="note">Total remaining tickets: ${formatNumber(totalRemainingTickets)}</p>
+      `;
+    }
+    if (mathExample) {
+      const sample = prizes.find((p) => p.totalTicketsEstimate);
+      if (sample) {
+        const ticketRatio =
+          ticketTier && ticketTier.initial ? ticketTier.remaining / ticketTier.initial : 0;
+        const anchorText = ticketTier
+          ? `Ticket tier anchor: ${formatNumber(ticketTier.remaining)} ÷ ${formatNumber(
+              ticketTier.initial
+            )} = ${formatNumber(ticketRatio)} remaining ratio.`
+          : `Median total tickets across tiers = ${formatNumber(totalRemainingTickets)}.`;
+        mathExample.textContent = `Example: For ${sample.prize}, total tickets estimate ≈ ${formatNumber(
+          sample.remaining
+        )} × ${formatNumber(sample.oddsValue)} = ${formatNumber(
+          sample.totalTicketsEstimate
+        )}. ${anchorText} Probability = ${formatNumber(sample.remaining)} ÷ ${formatNumber(
+          totalRemainingTickets
+        )} = ${formatNumber(sample.probability)}. Expected value contribution = probability × prize value.`;
+      } else {
+        mathExample.textContent =
+          'Example: Total tickets are estimated as Remaining × (1 in N odds). Probability is Remaining divided by the estimated total tickets.';
+      }
+    }
     setStatus('Calculation complete.');
   } catch (err) {
     results.textContent = '';
