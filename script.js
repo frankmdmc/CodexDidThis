@@ -123,6 +123,16 @@ const formatCurrency = (value) => {
   return value.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
 };
 
+const median = (values) => {
+  const sorted = values.filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
+  if (!sorted.length) return 0;
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    return (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+  return sorted[mid];
+};
+
 const parsePrizeCounts = (cell) => {
   if (!cell) return { remaining: '', initial: '' };
   const spans = cell.querySelectorAll('span');
@@ -222,7 +232,7 @@ async function fetchTicket() {
       p.oddsRaw = p.odds;
       const oddsMatch = p.oddsRaw.match(/1\s*in\s*([0-9.]+)/i);
       p.oddsValue = oddsMatch ? parseFloat(oddsMatch[1]) : num(p.oddsRaw);
-      p.remainingTickets = p.remaining && p.oddsValue ? p.remaining * p.oddsValue : 0;
+      p.totalTicketsEstimate = p.remaining && p.oddsValue ? p.remaining * p.oddsValue : 0;
       initialWinning += p.initial;
       currentWinning += p.remaining;
     });
@@ -231,14 +241,14 @@ async function fetchTicket() {
       throw new Error('Could not calculate remaining prizes. Missing prize counts.');
     }
 
-    const totalRemainingTickets = prizes.reduce((sum, p) => sum + p.remainingTickets, 0);
+    const totalRemainingTickets = median(prizes.map((p) => p.totalTicketsEstimate));
     if (!totalRemainingTickets) {
       throw new Error('Could not calculate remaining ticket totals from prize odds.');
     }
 
     let evPrize = 0;
     prizes.forEach((p) => {
-      p.probability = p.remainingTickets / totalRemainingTickets;
+      p.probability = p.remaining / totalRemainingTickets;
       evPrize += p.probability * p.value;
     });
 
@@ -254,14 +264,14 @@ async function fetchTicket() {
             <td>${formatNumber(p.remaining)}</td>
             <td>${formatNumber(p.initial)}</td>
             <td>${formatNumber(p.oddsValue)}</td>
-            <td>${formatNumber(p.remainingTickets)}</td>
+            <td>${formatNumber(p.totalTicketsEstimate)}</td>
             <td>${formatNumber(p.probability)}</td>
             <td>${formatCurrency(p.value)}</td>
           </tr>`
         )
         .join('');
       reconstructedTable.innerHTML = `
-        <p class="note">We reconstruct remaining ticket counts as Remaining × (1 in N odds) for each prize tier.</p>
+        <p class="note">We estimate total remaining tickets from each tier as Remaining × (1 in N odds), then use the median of those estimates to compute probabilities.</p>
         <table>
           <thead>
             <tr>
@@ -270,7 +280,7 @@ async function fetchTicket() {
               <th>Remaining</th>
               <th>Total</th>
               <th>Parsed N</th>
-              <th>Remaining Tickets (X×N)</th>
+              <th>Estimated Total Tickets (X×N)</th>
               <th>Probability</th>
               <th>Prize Value</th>
             </tr>
@@ -283,18 +293,20 @@ async function fetchTicket() {
       `;
     }
     if (mathExample) {
-      const sample = prizes.find((p) => p.remainingTickets);
+      const sample = prizes.find((p) => p.totalTicketsEstimate);
       if (sample) {
-        mathExample.textContent = `Example: For ${sample.prize}, remaining tickets ≈ ${formatNumber(
+        mathExample.textContent = `Example: For ${sample.prize}, total tickets estimate ≈ ${formatNumber(
           sample.remaining
         )} × ${formatNumber(sample.oddsValue)} = ${formatNumber(
-          sample.remainingTickets
-        )}. Probability = ${formatNumber(sample.remainingTickets)} ÷ ${formatNumber(
+          sample.totalTicketsEstimate
+        )}. Median total tickets across tiers = ${formatNumber(
+          totalRemainingTickets
+        )}. Probability = ${formatNumber(sample.remaining)} ÷ ${formatNumber(
           totalRemainingTickets
         )} = ${formatNumber(sample.probability)}. Expected value contribution = probability × prize value.`;
       } else {
         mathExample.textContent =
-          'Example: Remaining tickets are computed as Remaining × (1 in N odds). Probability is that value divided by total remaining tickets.';
+          'Example: Total tickets are estimated as Remaining × (1 in N odds). Probability is Remaining divided by the median total tickets.';
       }
     }
     setStatus('Calculation complete.');
