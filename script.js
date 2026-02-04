@@ -16,13 +16,53 @@ const setLoading = (loading) => {
   }
 };
 
+const proxies = [
+  {
+    name: 'allorigins raw',
+    buildUrl: (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  },
+  {
+    name: 'allorigins get',
+    buildUrl: (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+    parse: (text) => {
+      try {
+        const data = JSON.parse(text);
+        return {
+          content: data.contents || '',
+          warning: data.status?.http_code ? `HTTP ${data.status.http_code}` : '',
+        };
+      } catch (error) {
+        return { content: '', warning: `JSON parse error: ${error.message}` };
+      }
+    },
+  },
+  {
+    name: 'r.jina.ai',
+    buildUrl: (url) => `https://r.jina.ai/http://${url.replace(/^https?:\/\//, '')}`,
+  },
+];
+
 const fetchTicketHtml = async (url) => {
-  const proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
-  const res = await fetch(proxyUrl);
-  if (!res.ok) {
-    throw new Error('Fetch failed. The proxy might be unavailable.');
+  const errors = [];
+  for (const proxy of proxies) {
+    try {
+      setStatus(`Fetching via ${proxy.name}...`);
+      const res = await fetch(proxy.buildUrl(url));
+      const text = await res.text();
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const parsed = proxy.parse ? proxy.parse(text) : { content: text, warning: '' };
+      const content = parsed.content?.trim() || '';
+      if (!content) {
+        throw new Error(parsed.warning || 'Empty response');
+      }
+      return content;
+    } catch (error) {
+      errors.push(`${proxy.name}: ${error.message}`);
+    }
   }
-  return res.text();
+  throw new Error(`Fetch failed. Tried ${errors.length} proxies. ${errors.join(' | ')}`);
 };
 
 const textFromCell = (cell) => (cell ? cell.textContent.trim() : '');
