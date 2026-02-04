@@ -207,6 +207,24 @@ async function fetchTicket() {
     const { doc, prizeTable, rawText } = await fetchTicketDocument(url);
 
     const xp = (path) => doc.evaluate(path, doc, null, XPathResult.STRING_TYPE, null).stringValue.trim();
+    const findTextByLabel = (label) => {
+      const lowerLabel = label.toLowerCase();
+      const elements = doc.querySelectorAll('p, li, div');
+      for (const el of elements) {
+        const text = el.textContent.trim();
+        if (text.toLowerCase().includes(lowerLabel)) {
+          const strong = el.querySelector('strong');
+          if (strong?.textContent.trim()) {
+            return strong.textContent.trim();
+          }
+          const match = text.split(':').slice(1).join(':').trim();
+          if (match) {
+            return match;
+          }
+        }
+      }
+      return '';
+    };
     const data = {};
     data.name = xp('/html/head/title') || 'Unknown ticket';
     data.cost =
