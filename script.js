@@ -92,10 +92,7 @@ const fetchTicketDocument = async (url) => {
       const parser = new DOMParser();
       const doc = parser.parseFromString(content, 'text/html');
       const prizeTable = findPrizeTable(doc);
-      if (!prizeTable) {
-        throw new Error('No prize table found in response.');
-      }
-      return { doc, prizeTable };
+      return { doc, prizeTable, rawText: content };
     } catch (error) {
       errors.push(`${proxy.name}: ${error.message}`);
     }
@@ -172,6 +169,24 @@ const parsePrizeCounts = (cell) => {
   return { remaining: parts[0] || '', initial: parts[1] || '' };
 };
 
+const parsePrizeRowsFromText = (text) => {
+  if (!text) return [];
+  const rows = [];
+  const lines = text.split(/\r?\n/).map((line) => line.trim());
+  const rowRegex = /^(\$[0-9,]+(?:\.[0-9]+)?|Ticket)\s+([0-9,]+)\s+([0-9,]+)\s+of\s+([0-9,]+)/i;
+  for (const line of lines) {
+    const match = line.match(rowRegex);
+    if (!match) continue;
+    rows.push({
+      prize: match[1],
+      odds: match[2],
+      remaining: match[3],
+      initial: match[4],
+    });
+  }
+  return rows;
+};
+
 async function fetchTicket() {
   const url = input.value.trim();
   results.textContent = '';
@@ -189,7 +204,7 @@ async function fetchTicket() {
 
   try {
     setLoading(true);
-    const { doc, prizeTable } = await fetchTicketDocument(url);
+    const { doc, prizeTable, rawText } = await fetchTicketDocument(url);
 
     const xp = (path) => doc.evaluate(path, doc, null, XPathResult.STRING_TYPE, null).stringValue.trim();
     const findTextByLabel = (label) => {
@@ -226,21 +241,26 @@ async function fetchTicket() {
       extractLabelValue(doc, /cash\s*odds/i, /(1\s*in\s*[0-9.,]+)/i);
 
     const prizes = [];
-    const rows = prizeTable.querySelectorAll('tbody tr').length
-      ? prizeTable.querySelectorAll('tbody tr')
-      : prizeTable.querySelectorAll('tr');
-    rows.forEach((row, index) => {
-      if (index === 0 && row.querySelectorAll('th').length) return;
-      const cells = row.querySelectorAll('td');
-      if (cells.length < 3) return;
-      const { remaining, initial } = parsePrizeCounts(cells[2]);
-      prizes.push({
-        prize: textFromCell(cells[0]),
-        odds: textFromCell(cells[1]),
-        remaining,
-        initial,
+    if (prizeTable) {
+      const rows = prizeTable.querySelectorAll('tbody tr').length
+        ? prizeTable.querySelectorAll('tbody tr')
+        : prizeTable.querySelectorAll('tr');
+      rows.forEach((row, index) => {
+        if (index === 0 && row.querySelectorAll('th').length) return;
+        const cells = row.querySelectorAll('td');
+        if (cells.length < 3) return;
+        const { remaining, initial } = parsePrizeCounts(cells[2]);
+        prizes.push({
+          prize: textFromCell(cells[0]),
+          odds: textFromCell(cells[1]),
+          remaining,
+          initial,
+        });
       });
-    });
+    } else {
+      const textRows = parsePrizeRowsFromText(rawText);
+      textRows.forEach((row) => prizes.push(row));
+    }
 
     if (!prizes.length) {
       throw new Error('No prize table found. The page layout may have changed.');
