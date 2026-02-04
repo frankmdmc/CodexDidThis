@@ -3,6 +3,8 @@ const statusMessage = document.getElementById('status');
 const calcButton = document.getElementById('calc');
 const input = document.getElementById('ticketUrl');
 const select = document.getElementById('ticketSelect');
+const reconstructedTable = document.getElementById('reconstructedTable');
+const mathExample = document.getElementById('mathExample');
 
 const setStatus = (message = '') => {
   statusMessage.textContent = message;
@@ -12,6 +14,8 @@ const setLoading = (loading) => {
   calcButton.disabled = loading;
   if (loading) {
     results.textContent = '';
+    if (reconstructedTable) reconstructedTable.innerHTML = '';
+    if (mathExample) mathExample.textContent = '';
     setStatus('Loading ticket data...');
   }
 };
@@ -100,6 +104,24 @@ const fetchTicketDocument = async (url) => {
 };
 
 const textFromCell = (cell) => (cell ? cell.textContent.trim() : '');
+
+const escapeHtml = (value) =>
+  String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const formatNumber = (value) => {
+  if (!Number.isFinite(value)) return 'n/a';
+  return value.toLocaleString('en-US', { maximumFractionDigits: 6 });
+};
+
+const formatCurrency = (value) => {
+  if (!Number.isFinite(value)) return 'n/a';
+  return value.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
+};
 
 const parsePrizeCounts = (cell) => {
   if (!cell) return { remaining: '', initial: '' };
@@ -197,6 +219,10 @@ async function fetchTicket() {
       p.value = /ticket/i.test(p.prize) ? ticketCost : num(p.prize);
       p.remaining = num(p.remaining);
       p.initial = num(p.initial);
+      p.oddsRaw = p.odds;
+      const oddsMatch = p.oddsRaw.match(/1\s*in\s*([0-9.]+)/i);
+      p.oddsValue = oddsMatch ? parseFloat(oddsMatch[1]) : num(p.oddsRaw);
+      p.remainingTickets = p.remaining && p.oddsValue ? p.remaining * p.oddsValue : 0;
       initialWinning += p.initial;
       currentWinning += p.remaining;
     });
@@ -205,29 +231,72 @@ async function fetchTicket() {
       throw new Error('Could not calculate remaining prizes. Missing prize counts.');
     }
 
-    const oddsMatch = data.overallOdds.match(/1\s*in\s*([0-9.]+)/i);
-    const overall = oddsMatch
-      ? parseFloat(oddsMatch[1])
-      : parseFloat((data.overallOdds.match(/[0-9.]+/) || ['0'])[0]);
-    if (!overall) {
-      throw new Error('Overall odds were not found. The ticket page may have changed.');
-    }
-    const totalInitial = initialWinning * overall;
-    const initialLosing = totalInitial - initialWinning;
-    const currentLosing = initialLosing * (currentWinning / initialWinning);
-    const totalRemaining = currentWinning + currentLosing;
-    if (!totalRemaining) {
-      throw new Error('Could not calculate remaining ticket totals.');
+    const totalRemainingTickets = prizes.reduce((sum, p) => sum + p.remainingTickets, 0);
+    if (!totalRemainingTickets) {
+      throw new Error('Could not calculate remaining ticket totals from prize odds.');
     }
 
     let evPrize = 0;
     prizes.forEach((p) => {
-      evPrize += (p.remaining / totalRemaining) * p.value;
+      p.probability = p.remainingTickets / totalRemainingTickets;
+      evPrize += p.probability * p.value;
     });
 
     data.expectedValue = (evPrize - ticketCost).toFixed(4);
     const out = `Name: ${data.name}\nCost: ${data.cost}\nGame Number: ${data.gameNumber}\nOverall Odds: ${data.overallOdds}\nCash Odds: ${data.cashOdds}\nExpected Ticket Value: ${data.expectedValue}`;
     results.textContent = out;
+    if (reconstructedTable) {
+      const tableRows = prizes
+        .map(
+          (p) => `<tr>
+            <td>${escapeHtml(p.prize)}</td>
+            <td>${escapeHtml(p.oddsRaw)}</td>
+            <td>${formatNumber(p.remaining)}</td>
+            <td>${formatNumber(p.initial)}</td>
+            <td>${formatNumber(p.oddsValue)}</td>
+            <td>${formatNumber(p.remainingTickets)}</td>
+            <td>${formatNumber(p.probability)}</td>
+            <td>${formatCurrency(p.value)}</td>
+          </tr>`
+        )
+        .join('');
+      reconstructedTable.innerHTML = `
+        <p class="note">We reconstruct remaining ticket counts as Remaining × (1 in N odds) for each prize tier.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Prize</th>
+              <th>Odds (1 in N)</th>
+              <th>Remaining</th>
+              <th>Total</th>
+              <th>Parsed N</th>
+              <th>Remaining Tickets (X×N)</th>
+              <th>Probability</th>
+              <th>Prize Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tableRows}
+          </tbody>
+        </table>
+        <p class="note">Total remaining tickets: ${formatNumber(totalRemainingTickets)}</p>
+      `;
+    }
+    if (mathExample) {
+      const sample = prizes.find((p) => p.remainingTickets);
+      if (sample) {
+        mathExample.textContent = `Example: For ${sample.prize}, remaining tickets ≈ ${formatNumber(
+          sample.remaining
+        )} × ${formatNumber(sample.oddsValue)} = ${formatNumber(
+          sample.remainingTickets
+        )}. Probability = ${formatNumber(sample.remainingTickets)} ÷ ${formatNumber(
+          totalRemainingTickets
+        )} = ${formatNumber(sample.probability)}. Expected value contribution = probability × prize value.`;
+      } else {
+        mathExample.textContent =
+          'Example: Remaining tickets are computed as Remaining × (1 in N odds). Probability is that value divided by total remaining tickets.';
+      }
+    }
     setStatus('Calculation complete.');
   } catch (err) {
     results.textContent = '';
