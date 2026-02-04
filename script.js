@@ -42,7 +42,35 @@ const proxies = [
   },
 ];
 
-const fetchTicketHtml = async (url) => {
+const findPrizeTable = (doc) => {
+  const tables = Array.from(doc.querySelectorAll('table'));
+  for (const table of tables) {
+    const headerCells = Array.from(table.querySelectorAll('thead th'));
+    const headerText = headerCells.map((cell) => cell.textContent.trim().toLowerCase()).join(' ');
+    const hasPrize = headerText.includes('prize');
+    const hasRemaining = headerText.includes('remaining');
+    const hasOdds = headerText.includes('odds');
+    if (hasPrize && hasRemaining) {
+      return table;
+    }
+    if (headerCells.length === 0) {
+      const firstRow = table.querySelector('tr');
+      if (!firstRow) continue;
+      const rowText = Array.from(firstRow.querySelectorAll('td, th'))
+        .map((cell) => cell.textContent.trim().toLowerCase())
+        .join(' ');
+      if (rowText.includes('prize') && rowText.includes('remaining')) {
+        return table;
+      }
+    }
+    if (hasPrize && hasOdds) {
+      return table;
+    }
+  }
+  return null;
+};
+
+const fetchTicketDocument = async (url) => {
   const errors = [];
   for (const proxy of proxies) {
     try {
@@ -57,7 +85,13 @@ const fetchTicketHtml = async (url) => {
       if (!content) {
         throw new Error(parsed.warning || 'Empty response');
       }
-      return content;
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(content, 'text/html');
+      const prizeTable = findPrizeTable(doc);
+      if (!prizeTable) {
+        throw new Error('No prize table found in response.');
+      }
+      return { doc, prizeTable };
     } catch (error) {
       errors.push(`${proxy.name}: ${error.message}`);
     }
