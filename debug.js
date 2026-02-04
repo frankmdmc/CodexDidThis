@@ -24,7 +24,7 @@ const proxies = [
   },
   {
     name: 'r.jina.ai',
-    buildUrl: (url) => `https://r.jina.ai/http://r.jina.ai/http://${url.replace(/^https?:\/\//, '')}`,
+    buildUrl: (url) => `https://r.jina.ai/http://${url.replace(/^https?:\/\//, '')}`,
   },
 ];
 
