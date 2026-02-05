@@ -23,6 +23,18 @@
     Claimed odds, calculated odds, and expected value are placeholders until we wire up the full calculations.
   </p>
   <p id="status" class="note" role="status" aria-live="polite"></p>
+  <label class="note" style="display:block;margin:0.4rem 0;">
+    <input id="ignoreUnder500Scratchers" type="checkbox" />
+    Ignore prizes under $500
+  </label>
+  <label class="note" style="display:block;margin:0.4rem 0;">
+    <input id="applyTaxScratchers" type="checkbox" />
+    Include California tax
+  </label>
+  <label class="note" style="display:block;margin:0.4rem 0;">
+    Tax rate (%):
+    <input id="taxRateScratchers" type="text" value="24" style="max-width:120px;padding:0.25rem;" />
+  </label>
   <table>
     <thead>
       <tr>
@@ -30,7 +42,9 @@
         <th>Name + Number</th>
         <th>Claimed Cash Odds</th>
         <th>Calculated Cash Odds</th>
-        <th>Expected Value</th>
+        <th>Claimed Expected Value</th>
+        <th>Calculated Expected Value</th>
+        <th>EV Delta</th>
       </tr>
     </thead>
     <tbody id="scratchersBody"></tbody>
