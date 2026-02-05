@@ -174,6 +174,34 @@ const findScratchersApiUrl = (rawText, baseUrl) => {
   return '';
 };
 
+const parseScratchersFromGamesApi = (data, baseUrl) => {
+  if (!data || typeof data !== 'object') return [];
+  const games = Array.isArray(data.games) ? data.games : [];
+  return games
+    .map((game) => {
+      const rawUrl = game.productPage || game.url || game.gameUrl || '';
+      const name = game.name || game.gameName || '';
+      const gameNumber = game.gameNumber || game.number || '';
+      const price = game.price ?? '';
+      if (!rawUrl || !name) return null;
+      let url = rawUrl;
+      try {
+        url = new URL(rawUrl, baseUrl).toString();
+      } catch (error) {
+        return null;
+      }
+      const priceLabel =
+        typeof price === 'number' || /^\d/.test(String(price)) ? `$${price}` : price || '—';
+      const displayName = gameNumber ? `${name} (${gameNumber})` : name;
+      return {
+        price: priceLabel,
+        name: displayName,
+        url,
+      };
+    })
+    .filter(Boolean);
+};
+
 const parseScratchersFromApiData = (data, baseUrl) => {
   if (!data) return [];
   const pickArray = (value) => {
@@ -300,14 +328,26 @@ const loadScratchers = async () => {
     const { doc, rawText } = await fetchScratchersDocument(sourceUrl);
     const baseUrl = new URL(sourceUrl).origin;
     let scratchers = [];
-    const apiUrl = findScratchersApiUrl(rawText, baseUrl);
-    if (apiUrl) {
-      try {
-        const apiResponse = await fetchViaProxies(apiUrl, 'Fetching scratchers data');
-        const apiData = JSON.parse(apiResponse);
-        scratchers = parseScratchersFromApiData(apiData, baseUrl);
-      } catch (error) {
-        scratchers = [];
+    try {
+      const apiResponse = await fetchViaProxies(
+        'https://www.calottery.com/api/games/scratchers',
+        'Fetching scratchers data'
+      );
+      const apiData = JSON.parse(apiResponse);
+      scratchers = parseScratchersFromGamesApi(apiData, baseUrl);
+    } catch (error) {
+      scratchers = [];
+    }
+    if (!scratchers.length) {
+      const apiUrl = findScratchersApiUrl(rawText, baseUrl);
+      if (apiUrl) {
+        try {
+          const apiResponse = await fetchViaProxies(apiUrl, 'Fetching scratchers data');
+          const apiData = JSON.parse(apiResponse);
+          scratchers = parseScratchersFromApiData(apiData, baseUrl);
+        } catch (error) {
+          scratchers = [];
+        }
       }
     }
     if (!scratchers.length) {
