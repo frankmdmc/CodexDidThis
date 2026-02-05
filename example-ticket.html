@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Example Ticket Sandbox</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 2em; background: #f6f6f6; color: #222; }
+  main { max-width: 1200px; margin: 0 auto; background: #fff; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06); }
+  label { font-weight: 600; display: block; margin-top: 1rem; }
+  input[type=text], input[type=number] { width: 100%; max-width: 240px; padding: 0.45rem; border-radius: 6px; border: 1px solid #ccc; }
+  table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+  th, td { border: 1px solid #d6dce6; padding: 0.5rem; text-align: left; }
+  th { background: #f0f4ff; }
+  button { margin-top: 1rem; padding: 0.6rem 1.2rem; border-radius: 6px; border: none; background: #1b6ef3; color: #fff; font-weight: 600; cursor: pointer; }
+  #results { margin-top: 1.5rem; white-space: pre-wrap; background: #0b1b33; color: #f4f6fb; padding: 1rem; border-radius: 8px; }
+  .helper { color: #555; font-size: 0.95rem; }
+  .grid { display: flex; flex-wrap: wrap; gap: 1.5rem; }
+  .grid > div { min-width: 220px; }
+  .tablesLayout { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: start; }
+  .card { border: 1px solid #d6dce6; border-radius: 10px; padding: 0.75rem 1rem 1rem; background: #fff; }
+  .card h2 { margin: 0.25rem 0 0.5rem; }
+  #exampleMathSteps { margin-top: 0.75rem; padding-left: 1.25rem; line-height: 1.5; }
+  @media (max-width: 980px) { .tablesLayout { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <nav class="helper">
+    <a href="index.html">Back to calculator</a> ·
+    <a href="scratchers.html">Scratchers overview</a>
+  </nav>
+  <h1>Example Ticket Sandbox</h1>
+  <p class="helper">
+    Adjust the prize tiers and odds below to see how the expected value math changes.
+  </p>
+  <div class="grid">
+    <div>
+      <label for="ticketName">Ticket name</label>
+      <input id="ticketName" type="text" value="Example Lucky Lines" />
+    </div>
+    <div>
+      <label for="ticketPrice">Ticket price ($)</label>
+      <input id="ticketPrice" type="number" value="5" step="0.01" />
+    </div>
+    <div>
+      <label>
+        <input id="includeSmallPrizesExample" type="checkbox" checked />
+        Include prizes under $500
+      </label>
+      <label>
+        <input id="applyTaxExample" type="checkbox" />
+        Apply post-tax prize values
+      </label>
+      <div class="helper">
+        Tax rate (%):
+        <input id="taxRateExample" type="text" value="24" style="max-width: 120px;" />
+      </div>
+    </div>
+  </div>
+
+  <button id="exampleCalc" type="button">Calculate EV</button>
+  <div id="results" aria-live="polite"></div>
+  <section id="exampleMath" class="helper" aria-live="polite"></section>
+
+  <section id="exampleBreakdown" aria-live="polite">
+    <div class="tablesLayout">
+      <div class="card">
+        <h2>Input Prize Tiers</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Prize</th>
+              <th>Odds (1 in N)</th>
+              <th>Remaining</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody id="examplePrizeBody"></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h2>Output EV Contributions</h2>
+        <div id="exampleMathTable"></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:1rem;">
+      <h2>Step-by-step EV math</h2>
+      <ol id="exampleMathSteps"></ol>
+      <div id="exampleMathText" class="helper"></div>
+    </div>
+  </section>
+</main>
+<script src="example-ticket.js?v=1"></script>
+</body>
+</html>
