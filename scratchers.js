@@ -174,6 +174,45 @@ const findScratchersApiUrl = (rawText, baseUrl) => {
   return '';
 };
 
+const calculateStatsFromPrizeTiers = (prizeTiers) => {
+  if (!prizeTiers.length) {
+    return { calculatedCashOdds: null, expectedValue: null };
+  }
+  let totalPrizes = 0;
+  let remainingPrizes = 0;
+  let expectedValueNumerator = 0;
+  const ticketEstimates = [];
+
+  prizeTiers.forEach((tier) => {
+    const total = Number(tier.totalNumberOfPrizes) || 0;
+    const remaining = Number(tier.numberOfPrizesPending) || 0;
+    const odds = Number(tier.odds);
+    const value = Number(tier.value) || 0;
+    if (total && Number.isFinite(odds)) {
+      ticketEstimates.push(odds * total);
+    }
+    totalPrizes += total;
+    remainingPrizes += remaining;
+    expectedValueNumerator += value * remaining;
+  });
+
+  if (!remainingPrizes || !totalPrizes || !ticketEstimates.length) {
+    return { calculatedCashOdds: null, expectedValue: null };
+  }
+
+  const estimatedTickets =
+    ticketEstimates.reduce((sum, estimate) => sum + estimate, 0) / ticketEstimates.length;
+  const remainingTickets = estimatedTickets * (remainingPrizes / totalPrizes);
+  if (!remainingTickets) {
+    return { calculatedCashOdds: null, expectedValue: null };
+  }
+
+  return {
+    calculatedCashOdds: remainingTickets / remainingPrizes,
+    expectedValue: expectedValueNumerator / remainingTickets,
+  };
+};
+
 const parseScratchersFromGamesApi = (data, baseUrl) => {
   if (!data || typeof data !== 'object') return [];
   const games = Array.isArray(data.games) ? data.games : [];
@@ -183,6 +222,8 @@ const parseScratchersFromGamesApi = (data, baseUrl) => {
       const name = game.name || game.gameName || '';
       const gameNumber = game.gameNumber || game.number || '';
       const price = game.price ?? '';
+      const claimedCashOdds = game.cashOdds ?? '';
+      const prizeTiers = Array.isArray(game.prizeTiers) ? game.prizeTiers : [];
       if (!rawUrl || !name) return null;
       let url = rawUrl;
       try {
@@ -193,10 +234,14 @@ const parseScratchersFromGamesApi = (data, baseUrl) => {
       const priceLabel =
         typeof price === 'number' || /^\d/.test(String(price)) ? `$${price}` : price || '—';
       const displayName = gameNumber ? `${name} (${gameNumber})` : name;
+      const stats = calculateStatsFromPrizeTiers(prizeTiers);
       return {
         price: priceLabel,
         name: displayName,
         url,
+        claimedCashOdds,
+        calculatedCashOdds: stats.calculatedCashOdds,
+        expectedValue: stats.expectedValue,
       };
     })
     .filter(Boolean);
@@ -304,13 +349,25 @@ const renderScratchers = (scratchers) => {
         <td><a href="${escapeHtml(scratcher.url)}" target="_blank" rel="noreferrer">${escapeHtml(
         scratcher.name
       )}</a></td>
-        <td>—</td>
-        <td>—</td>
-        <td>—</td>
+        <td>${formatOdds(scratcher.claimedCashOdds)}</td>
+        <td>${formatOdds(scratcher.calculatedCashOdds)}</td>
+        <td>${formatCurrency(scratcher.expectedValue)}</td>
       </tr>`
     )
     .join('');
   scratchersBody.innerHTML = rows;
+};
+
+const formatOdds = (value) => {
+  const odds = Number(value);
+  if (!Number.isFinite(odds) || odds <= 0) return '—';
+  return `1 in ${odds.toFixed(2)}`;
+};
+
+const formatCurrency = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return '—';
+  return `$${numeric.toFixed(2)}`;
 };
 
 const sortScratchers = (scratchers) =>
