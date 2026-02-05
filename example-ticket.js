@@ -7,6 +7,8 @@ const ticketPriceInput = document.getElementById('ticketPrice');
 const includeSmallToggle = document.getElementById('includeSmallPrizesExample');
 const applyTaxToggle = document.getElementById('applyTaxExample');
 const taxRateInput = document.getElementById('taxRateExample');
+const mathText = document.getElementById('exampleMathText');
+const mathTable = document.getElementById('exampleMathTable');
 
 const defaultPrizeTiers = [
   { prize: 'Ticket', odds: '1 in 6.00', remaining: 1200, total: 3000 },
@@ -24,7 +26,11 @@ const formatNumber = (value) => {
 
 const formatCurrency = (value) => {
   if (!Number.isFinite(value)) return 'n/a';
-  return value.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
+  return value.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 4,
+  });
 };
 
 const parseOddsValue = (text) => {
@@ -74,6 +80,73 @@ const readRows = () => {
   return rows;
 };
 
+const renderBreakdown = ({
+  ticketCost,
+  includeSmall,
+  applyTax,
+  taxRate,
+  totalRemainingTickets,
+  evPrize,
+  expectedValue,
+  prizes,
+}) => {
+  if (mathText) {
+    const lines = prizes
+      .map((p) => {
+        const excludedText = p.excludedUnder500 ? ' (excluded under $500 rule)' : '';
+        const taxText = p.taxApplied ? ` then tax-adjusted to ${formatCurrency(p.valueAdjusted)}` : '';
+        return `${p.prize}: probability = ${formatNumber(p.remaining)} ÷ ${formatNumber(
+          totalRemainingTickets
+        )} = ${formatNumber(p.probability)}; contribution = ${formatNumber(
+          p.probability
+        )} × ${formatCurrency(p.valueAdjusted)} = ${formatCurrency(p.contribution)}${excludedText}${taxText}.`;
+      })
+      .join(' ');
+
+    mathText.textContent =
+      `Step 1) Estimate remaining ticket pool. ` +
+      `Total remaining tickets = ${formatNumber(totalRemainingTickets)}. ` +
+      `Step 2) For each prize, calculate probability = remaining prizes / remaining tickets and multiply by adjusted prize value. ` +
+      `Step 3) Sum all prize contributions = ${formatCurrency(evPrize)}. ` +
+      `Step 4) Net EV = gross EV (${formatCurrency(evPrize)}) - ticket cost (${formatCurrency(
+        ticketCost
+      )}) = ${formatCurrency(expectedValue)}. ` +
+      `Current toggles: ${includeSmall ? 'including' : 'excluding'} prizes under $500, ` +
+      `${applyTax ? `tax applied at ${formatNumber(taxRate * 100)}%` : 'no tax adjustment'}. ` +
+      lines;
+  }
+
+  if (mathTable) {
+    const rows = prizes
+      .map(
+        (p) => `<tr>
+          <td>${p.prize}</td>
+          <td>${formatNumber(p.remaining)}</td>
+          <td>${formatNumber(totalRemainingTickets)}</td>
+          <td>${formatNumber(p.probability)}</td>
+          <td>${formatCurrency(p.valueAdjusted)}</td>
+          <td>${formatCurrency(p.contribution)}</td>
+        </tr>`
+      )
+      .join('');
+    mathTable.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Prize</th>
+            <th>Remaining</th>
+            <th>Remaining Tickets</th>
+            <th>Probability</th>
+            <th>Adjusted Prize Value</th>
+            <th>EV Contribution</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }
+};
+
 const calculateExample = () => {
   const ticketName = ticketNameInput?.value || 'Example Ticket';
   const ticketCost = num(ticketPriceInput?.value || '0');
@@ -102,30 +175,52 @@ const calculateExample = () => {
 
   let evPrize = 0;
   prizes.forEach((p) => {
-    if (!includeSmall && p.value > 0 && p.value < 500) {
+    p.excludedUnder500 = !includeSmall && p.value > 0 && p.value < 500;
+    if (p.excludedUnder500) {
       p.valueAdjusted = 0;
     } else {
       p.valueAdjusted = p.value;
     }
+    p.taxApplied = false;
     if (applyTax && p.valueAdjusted > 0 && !/ticket/i.test(p.prize)) {
       p.valueAdjusted = p.valueAdjusted * (1 - taxRate);
+      p.taxApplied = true;
     }
     p.probability = totalRemainingTickets ? p.remaining / totalRemainingTickets : 0;
-    evPrize += p.probability * p.valueAdjusted;
+    p.contribution = p.probability * p.valueAdjusted;
+    evPrize += p.contribution;
   });
 
   const expectedValue = evPrize - ticketCost;
-  results.textContent = `Name: ${ticketName}\nTicket cost: ${formatCurrency(ticketCost)}\nExpected value: ${formatCurrency(
-    expectedValue
+  results.textContent = `Name: ${ticketName}\nTicket cost: ${formatCurrency(
+    ticketCost
+  )}\nExpected value: ${formatCurrency(expectedValue)}\nGross expected return: ${formatCurrency(
+    evPrize
   )}\nTotal remaining tickets: ${formatNumber(totalRemainingTickets)}`;
   mathSection.textContent = `Adjustments: ${includeSmall ? 'include' : 'exclude'} prizes under $500; ${
     applyTax ? `apply ${formatNumber(taxRate * 100)}% tax` : 'no tax applied'
   }.`;
+
+  renderBreakdown({
+    ticketCost,
+    includeSmall,
+    applyTax,
+    taxRate,
+    totalRemainingTickets,
+    evPrize,
+    expectedValue,
+    prizes,
+  });
 };
 
 calcButton.addEventListener('click', calculateExample);
 document.addEventListener('input', (event) => {
-  if (event.target?.closest('#examplePrizeBody') || event.target?.id?.includes('Example')) {
+  if (
+    event.target?.closest('#examplePrizeBody') ||
+    event.target?.id?.includes('Example') ||
+    event.target?.id === 'ticketName' ||
+    event.target?.id === 'ticketPrice'
+  ) {
     calculateExample();
   }
 });
