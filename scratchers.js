@@ -373,10 +373,31 @@ const renderScratchers = (scratchers) => {
         <td>${formatOdds(scratcher.calculatedCashOdds)}</td>
         <td>${formatCurrency(scratcher.claimedExpectedValue)}</td>
         <td>${formatCurrency(scratcher.expectedValue)}</td>
+        <td>${renderEvDelta(scratcher.claimedExpectedValue, scratcher.expectedValue)}</td>
       </tr>`
     )
     .join('');
   scratchersBody.innerHTML = rows;
+};
+
+const renderEvDelta = (claimedValue, calculatedValue) => {
+  const claimed = Number(claimedValue);
+  const calculated = Number(calculatedValue);
+  if (!Number.isFinite(claimed) || !Number.isFinite(calculated) || claimed === 0) {
+    return '—';
+  }
+  const delta = calculated - claimed;
+  const percent = delta / Math.abs(claimed);
+  const color = evDeltaColor(percent);
+  const percentLabel = `${(percent * 100).toFixed(1)}%`;
+  return `<span style="display:inline-block;padding:0.1rem 0.35rem;border-radius:0.4rem;background:${color};color:#0d1b2a;">${percentLabel}</span>`;
+};
+
+const evDeltaColor = (percent) => {
+  const clamped = Math.max(-0.5, Math.min(0.5, percent));
+  const normalized = (clamped + 0.5) / 1;
+  const hue = normalized * 120;
+  return `hsl(${hue}, 65%, 80%)`;
 };
 
 const formatOdds = (value) => {
