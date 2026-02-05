@@ -174,13 +174,14 @@ const findScratchersApiUrl = (rawText, baseUrl) => {
   return '';
 };
 
-const calculateStatsFromPrizeTiers = (prizeTiers) => {
+const calculateStatsFromPrizeTiers = (prizeTiers, ticketPrice) => {
   if (!prizeTiers.length) {
-    return { calculatedCashOdds: null, expectedValue: null };
+    return { calculatedCashOdds: null, expectedValue: null, claimedExpectedValue: null };
   }
   let totalPrizes = 0;
   let remainingPrizes = 0;
   let expectedValueNumerator = 0;
+  let claimedExpectedValueNumerator = 0;
   const ticketEstimates = [];
 
   prizeTiers.forEach((tier) => {
@@ -194,22 +195,35 @@ const calculateStatsFromPrizeTiers = (prizeTiers) => {
     totalPrizes += total;
     remainingPrizes += remaining;
     expectedValueNumerator += value * remaining;
+    claimedExpectedValueNumerator += value * total;
   });
 
   if (!remainingPrizes || !totalPrizes || !ticketEstimates.length) {
-    return { calculatedCashOdds: null, expectedValue: null };
+    return { calculatedCashOdds: null, expectedValue: null, claimedExpectedValue: null };
   }
 
   const estimatedTickets =
     ticketEstimates.reduce((sum, estimate) => sum + estimate, 0) / ticketEstimates.length;
   const remainingTickets = estimatedTickets * (remainingPrizes / totalPrizes);
   if (!remainingTickets) {
-    return { calculatedCashOdds: null, expectedValue: null };
+    return { calculatedCashOdds: null, expectedValue: null, claimedExpectedValue: null };
   }
+
+  const claimedExpectedValue = claimedExpectedValueNumerator / estimatedTickets;
+  const netClaimedExpectedValue =
+    Number.isFinite(claimedExpectedValue) && Number.isFinite(ticketPrice)
+      ? claimedExpectedValue - ticketPrice
+      : null;
+  const expectedValue = expectedValueNumerator / remainingTickets;
+  const netExpectedValue =
+    Number.isFinite(expectedValue) && Number.isFinite(ticketPrice)
+      ? expectedValue - ticketPrice
+      : null;
 
   return {
     calculatedCashOdds: remainingTickets / remainingPrizes,
-    expectedValue: expectedValueNumerator / remainingTickets,
+    expectedValue: netExpectedValue,
+    claimedExpectedValue: netClaimedExpectedValue,
   };
 };
 
@@ -234,13 +248,15 @@ const parseScratchersFromGamesApi = (data, baseUrl) => {
       const priceLabel =
         typeof price === 'number' || /^\d/.test(String(price)) ? `$${price}` : price || '—';
       const displayName = gameNumber ? `${name} (${gameNumber})` : name;
-      const stats = calculateStatsFromPrizeTiers(prizeTiers);
+      const numericPrice = Number(price);
+      const stats = calculateStatsFromPrizeTiers(prizeTiers, numericPrice);
       return {
         price: priceLabel,
         name: displayName,
         url,
         claimedCashOdds,
         calculatedCashOdds: stats.calculatedCashOdds,
+        claimedExpectedValue: stats.claimedExpectedValue,
         expectedValue: stats.expectedValue,
       };
     })
@@ -351,6 +367,7 @@ const renderScratchers = (scratchers) => {
       )}</a></td>
         <td>${formatOdds(scratcher.claimedCashOdds)}</td>
         <td>${formatOdds(scratcher.calculatedCashOdds)}</td>
+        <td>${formatCurrency(scratcher.claimedExpectedValue)}</td>
         <td>${formatCurrency(scratcher.expectedValue)}</td>
       </tr>`
     )
@@ -367,7 +384,8 @@ const formatOdds = (value) => {
 const formatCurrency = (value) => {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return '—';
-  return `$${numeric.toFixed(2)}`;
+  const formatted = Math.abs(numeric).toFixed(2);
+  return numeric < 0 ? `-$${formatted}` : `$${formatted}`;
 };
 
 const sortScratchers = (scratchers) =>
