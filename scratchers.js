@@ -105,6 +105,52 @@ const extractScratchersFromLinks = (doc, baseUrl) => {
   return Array.from(items.values());
 };
 
+const extractScratchersFromText = (rawText, baseUrl) => {
+  const items = new Map();
+  if (!rawText) return [];
+  const urlMatches = rawText.matchAll(
+    /https?:\/\/[^"'\s)]+\/scratchers\/\$?\d+\/[a-z0-9-]+/gi
+  );
+  const pathMatches = rawText.matchAll(/\/scratchers\/\$?\d+\/[a-z0-9-]+/gi);
+
+  const addUrl = (url) => {
+    try {
+      const absoluteUrl = new URL(url, baseUrl).toString();
+      const { price, gameNumber, nameFromSlug } = parseGameInfoFromUrl(absoluteUrl);
+      const displayName = gameNumber ? `${nameFromSlug} (${gameNumber})` : nameFromSlug;
+      if (!items.has(absoluteUrl)) {
+        items.set(absoluteUrl, {
+          price,
+          name: displayName || 'Unknown scratcher',
+          url: absoluteUrl,
+        });
+      }
+    } catch (error) {
+      return;
+    }
+  };
+
+  for (const match of urlMatches) {
+    addUrl(match[0]);
+  }
+  for (const match of pathMatches) {
+    addUrl(match[0]);
+  }
+
+  return Array.from(items.values());
+};
+
+const extractScratchers = (doc, rawText, baseUrl) => {
+  const items = new Map();
+  const linkItems = extractScratchersFromLinks(doc, baseUrl);
+  linkItems.forEach((item) => items.set(item.url, item));
+  const textItems = extractScratchersFromText(rawText, baseUrl);
+  textItems.forEach((item) => {
+    if (!items.has(item.url)) items.set(item.url, item);
+  });
+  return Array.from(items.values());
+};
+
 const renderScratchers = (scratchers) => {
   if (!scratchersBody) return;
   if (!scratchers.length) {
@@ -140,8 +186,11 @@ const sortScratchers = (scratchers) =>
 const loadScratchers = async () => {
   try {
     setStatus('Loading scratchers...');
-    const { doc } = await fetchScratchersDocument('https://www.calottery.com/en/scratchers');
-    const scratchers = sortScratchers(extractScratchersFromLinks(doc, window.location.href));
+    const sourceUrl = 'https://www.calottery.com/en/scratchers';
+    const { doc, rawText } = await fetchScratchersDocument(sourceUrl);
+    const scratchers = sortScratchers(
+      extractScratchers(doc, rawText, new URL(sourceUrl).origin)
+    );
     renderScratchers(scratchers);
     setStatus(`Loaded ${scratchers.length} scratchers.`);
   } catch (error) {
