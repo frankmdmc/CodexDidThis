@@ -16,12 +16,13 @@
 </head>
 <body>
 <main>
-  <h1>All California Scratchers (Placeholder)</h1>
+  <h1>All California Scratchers</h1>
   <p class="note">
-    This placeholder mirrors the categories shown at
+    This list is populated from
     <a href="https://www.calottery.com/en/scratchers" target="_blank" rel="noreferrer">calottery.com/en/scratchers</a>.
-    Each row is a stand-in for a scratcher game with the fields we plan to calculate.
+    Claimed odds, calculated odds, and expected value are placeholders until we wire up the full calculations.
   </p>
+  <p id="status" class="note" role="status" aria-live="polite"></p>
   <table>
     <thead>
       <tr>
@@ -29,69 +30,16 @@
         <th>Name + Number</th>
         <th>Claimed Cash Odds</th>
         <th>Calculated Cash Odds</th>
+        <th>Expected Value</th>
       </tr>
     </thead>
-    <tbody>
-      <tr>
-        <td>$1</td>
-        <td>Example Game (1001)</td>
-        <td>1 in 5.12</td>
-        <td>1 in 5.45</td>
-      </tr>
-      <tr>
-        <td>$2</td>
-        <td>Example Game (1710)</td>
-        <td>1 in 5.08</td>
-        <td>1 in 5.33</td>
-      </tr>
-      <tr>
-        <td>$3</td>
-        <td>Example Game (1666)</td>
-        <td>1 in 3.74</td>
-        <td>1 in 3.91</td>
-      </tr>
-      <tr>
-        <td>$5</td>
-        <td>Example Game (1500)</td>
-        <td>1 in 4.20</td>
-        <td>1 in 4.37</td>
-      </tr>
-      <tr>
-        <td>$10</td>
-        <td>Example Game (1400)</td>
-        <td>1 in 3.50</td>
-        <td>1 in 3.68</td>
-      </tr>
-      <tr>
-        <td>$20</td>
-        <td>Example Game (1300)</td>
-        <td>1 in 3.00</td>
-        <td>1 in 3.12</td>
-      </tr>
-      <tr>
-        <td>$25</td>
-        <td>Example Game (1200)</td>
-        <td>1 in 2.90</td>
-        <td>1 in 3.04</td>
-      </tr>
-      <tr>
-        <td>$30</td>
-        <td>Example Game (1100)</td>
-        <td>1 in 2.80</td>
-        <td>1 in 2.95</td>
-      </tr>
-      <tr>
-        <td>$40</td>
-        <td>Example Game (1000)</td>
-        <td>1 in 2.70</td>
-        <td>1 in 2.86</td>
-      </tr>
-    </tbody>
+    <tbody id="scratchersBody"></tbody>
   </table>
   <p class="note">
-    Next step: replace these placeholders with live data per scratcher category.
+    Next step: replace placeholder odds/EV with live data per scratcher.
   </p>
   <p class="note"><a href="index.html">Back to calculator</a></p>
 </main>
+<script src="scratchers.js?v=1"></script>
 </body>
 </html>
