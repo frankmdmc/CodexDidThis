@@ -5,6 +5,9 @@ const input = document.getElementById('ticketUrl');
 const select = document.getElementById('ticketSelect');
 const reconstructedTable = document.getElementById('reconstructedTable');
 const mathExample = document.getElementById('mathExample');
+const includeSmallPrizesToggle = document.getElementById('includeSmallPrizes');
+const applyTaxToggle = document.getElementById('applyTax');
+const taxRateInput = document.getElementById('taxRate');
 
 const setStatus = (message = '') => {
   statusMessage.textContent = message;
@@ -42,7 +45,11 @@ const proxies = [
   },
   {
     name: 'r.jina.ai',
-    buildUrl: (url) => `https://r.jina.ai/http://${url.replace(/^https?:\/\//, '')}`,
+    buildUrl: (url) => {
+      const scheme = url.startsWith('https://') ? 'https://' : 'http://';
+      const normalized = url.replace(/^https?:\/\//, '');
+      return `https://r.jina.ai/${scheme}${normalized}`;
+    },
   },
 ];
 
@@ -300,10 +307,22 @@ async function fetchTicket() {
       throw new Error('Could not calculate remaining ticket totals from prize odds.');
     }
 
+    const includeSmallPrizes = includeSmallPrizesToggle?.checked ?? true;
+    const applyTax = applyTaxToggle?.checked ?? false;
+    const taxRate = parseFloat(taxRateInput?.value || '0') / 100 || 0;
+
     let evPrize = 0;
     prizes.forEach((p) => {
+      if (!includeSmallPrizes && p.value > 0 && p.value < 500) {
+        p.valueAdjusted = 0;
+      } else {
+        p.valueAdjusted = p.value;
+      }
+      if (applyTax && p.valueAdjusted > 0 && !/ticket/i.test(p.prize)) {
+        p.valueAdjusted = p.valueAdjusted * (1 - taxRate);
+      }
       p.probability = p.remaining / totalRemainingTickets;
-      evPrize += p.probability * p.value;
+      evPrize += p.probability * p.valueAdjusted;
     });
 
     data.expectedValue = (evPrize - ticketCost).toFixed(4);
@@ -325,7 +344,7 @@ async function fetchTicket() {
             <td>${formatNumber(p.oddsValue)}</td>
             <td>${formatNumber(p.totalTicketsEstimate)}</td>
             <td>${formatNumber(p.probability)}</td>
-            <td>${formatCurrency(p.value)}</td>
+            <td>${formatCurrency(p.valueAdjusted)}</td>
           </tr>`
         )
         .join('');
@@ -344,7 +363,7 @@ async function fetchTicket() {
               <th>Parsed N</th>
               <th>Estimated Total Tickets (X×N)</th>
               <th>Probability</th>
-              <th>Prize Value</th>
+              <th>Prize Value (Adjusted)</th>
             </tr>
           </thead>
           <tbody>
@@ -352,6 +371,9 @@ async function fetchTicket() {
           </tbody>
         </table>
         <p class="note">Total remaining tickets: ${formatNumber(totalRemainingTickets)}</p>
+        <p class="note">Adjustments: ${includeSmallPrizes ? 'include' : 'exclude'} prizes under $500, ${
+          applyTax ? `apply ${formatNumber(taxRate * 100)}% tax` : 'no tax applied'
+        }.</p>
       `;
     }
     if (mathExample) {
