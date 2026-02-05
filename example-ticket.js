@@ -9,6 +9,7 @@ const applyTaxToggle = document.getElementById('applyTaxExample');
 const taxRateInput = document.getElementById('taxRateExample');
 const mathText = document.getElementById('exampleMathText');
 const mathTable = document.getElementById('exampleMathTable');
+const mathSteps = document.getElementById('exampleMathSteps');
 
 const defaultPrizeTiers = [
   { prize: 'Ticket', odds: '1 in 6.00', remaining: 1200, total: 3000 },
@@ -46,10 +47,7 @@ const median = (values) => {
   const sorted = values.filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
   if (!sorted.length) return 0;
   const mid = Math.floor(sorted.length / 2);
-  if (sorted.length % 2 === 0) {
-    return (sorted[mid - 1] + sorted[mid]) / 2;
-  }
-  return sorted[mid];
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 };
 
 const num = (value) => parseFloat(String(value).replace(/[^0-9.]+/g, '')) || 0;
@@ -90,30 +88,37 @@ const renderBreakdown = ({
   expectedValue,
   prizes,
 }) => {
+  if (mathSteps) {
+    const stepItems = [
+      `Estimate remaining ticket pool: ${formatNumber(totalRemainingTickets)} tickets.`,
+      'Compute each prize probability as Remaining ÷ Remaining Tickets.',
+      'Apply toggle adjustments to each prize value (under-$500 exclusion and optional tax).',
+      `Compute each EV contribution as Probability × Adjusted Prize Value.`,
+      `Add all contributions for gross EV: ${formatCurrency(evPrize)}.`,
+      `Subtract ticket cost ${formatCurrency(ticketCost)} for net EV: ${formatCurrency(expectedValue)}.`,
+    ];
+    mathSteps.innerHTML = stepItems.map((step) => `<li>${step}</li>`).join('');
+  }
+
   if (mathText) {
     const lines = prizes
       .map((p) => {
-        const excludedText = p.excludedUnder500 ? ' (excluded under $500 rule)' : '';
-        const taxText = p.taxApplied ? ` then tax-adjusted to ${formatCurrency(p.valueAdjusted)}` : '';
-        return `${p.prize}: probability = ${formatNumber(p.remaining)} ÷ ${formatNumber(
+        const excludedText = p.excludedUnder500 ? ' excluded (<$500 rule).' : '';
+        const taxText = p.taxApplied ? ` tax-adjusted to ${formatCurrency(p.valueAdjusted)}.` : '';
+        return `<li><strong>${p.prize}</strong>: P = ${formatNumber(p.remaining)} / ${formatNumber(
           totalRemainingTickets
-        )} = ${formatNumber(p.probability)}; contribution = ${formatNumber(
+        )} = ${formatNumber(p.probability)}; EV contribution = ${formatNumber(
           p.probability
-        )} × ${formatCurrency(p.valueAdjusted)} = ${formatCurrency(p.contribution)}${excludedText}${taxText}.`;
+        )} × ${formatCurrency(p.valueAdjusted)} = ${formatCurrency(p.contribution)}.${excludedText}${taxText}</li>`;
       })
-      .join(' ');
+      .join('');
 
-    mathText.textContent =
-      `Step 1) Estimate remaining ticket pool. ` +
-      `Total remaining tickets = ${formatNumber(totalRemainingTickets)}. ` +
-      `Step 2) For each prize, calculate probability = remaining prizes / remaining tickets and multiply by adjusted prize value. ` +
-      `Step 3) Sum all prize contributions = ${formatCurrency(evPrize)}. ` +
-      `Step 4) Net EV = gross EV (${formatCurrency(evPrize)}) - ticket cost (${formatCurrency(
-        ticketCost
-      )}) = ${formatCurrency(expectedValue)}. ` +
-      `Current toggles: ${includeSmall ? 'including' : 'excluding'} prizes under $500, ` +
-      `${applyTax ? `tax applied at ${formatNumber(taxRate * 100)}%` : 'no tax adjustment'}. ` +
-      lines;
+    mathText.innerHTML = `
+      <p><strong>Current settings:</strong> ${includeSmall ? 'Including' : 'Excluding'} prizes under $500, ${
+      applyTax ? `tax applied at ${formatNumber(taxRate * 100)}%` : 'no tax applied'
+    }.</p>
+      <ul>${lines}</ul>
+    `;
   }
 
   if (mathTable) {
@@ -176,11 +181,7 @@ const calculateExample = () => {
   let evPrize = 0;
   prizes.forEach((p) => {
     p.excludedUnder500 = !includeSmall && p.value > 0 && p.value < 500;
-    if (p.excludedUnder500) {
-      p.valueAdjusted = 0;
-    } else {
-      p.valueAdjusted = p.value;
-    }
+    p.valueAdjusted = p.excludedUnder500 ? 0 : p.value;
     p.taxApplied = false;
     if (applyTax && p.valueAdjusted > 0 && !/ticket/i.test(p.prize)) {
       p.valueAdjusted = p.valueAdjusted * (1 - taxRate);

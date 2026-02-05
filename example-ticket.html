@@ -5,7 +5,7 @@
 <title>Example Ticket Sandbox</title>
 <style>
   body { font-family: Arial, sans-serif; margin: 2em; background: #f6f6f6; color: #222; }
-  main { max-width: 980px; margin: 0 auto; background: #fff; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06); }
+  main { max-width: 1200px; margin: 0 auto; background: #fff; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06); }
   label { font-weight: 600; display: block; margin-top: 1rem; }
   input[type=text], input[type=number] { width: 100%; max-width: 240px; padding: 0.45rem; border-radius: 6px; border: 1px solid #ccc; }
   table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
@@ -16,6 +16,11 @@
   .helper { color: #555; font-size: 0.95rem; }
   .grid { display: flex; flex-wrap: wrap; gap: 1.5rem; }
   .grid > div { min-width: 220px; }
+  .tablesLayout { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: start; }
+  .card { border: 1px solid #d6dce6; border-radius: 10px; padding: 0.75rem 1rem 1rem; background: #fff; }
+  .card h2 { margin: 0.25rem 0 0.5rem; }
+  #exampleMathSteps { margin-top: 0.75rem; padding-left: 1.25rem; line-height: 1.5; }
+  @media (max-width: 980px) { .tablesLayout { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -53,26 +58,37 @@
     </div>
   </div>
 
-  <h2>Prize tiers</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Prize</th>
-        <th>Odds (1 in N)</th>
-        <th>Remaining</th>
-        <th>Total</th>
-      </tr>
-    </thead>
-    <tbody id="examplePrizeBody"></tbody>
-  </table>
   <button id="exampleCalc" type="button">Calculate EV</button>
-
   <div id="results" aria-live="polite"></div>
   <section id="exampleMath" class="helper" aria-live="polite"></section>
+
   <section id="exampleBreakdown" aria-live="polite">
-    <h2>Step-by-step EV math</h2>
-    <div id="exampleMathText" class="helper"></div>
-    <div id="exampleMathTable"></div>
+    <div class="tablesLayout">
+      <div class="card">
+        <h2>Input Prize Tiers</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Prize</th>
+              <th>Odds (1 in N)</th>
+              <th>Remaining</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody id="examplePrizeBody"></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h2>Output EV Contributions</h2>
+        <div id="exampleMathTable"></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:1rem;">
+      <h2>Step-by-step EV math</h2>
+      <ol id="exampleMathSteps"></ol>
+      <div id="exampleMathText" class="helper"></div>
+    </div>
   </section>
 </main>
 <script src="example-ticket.js?v=1"></script>
