@@ -64,6 +64,29 @@ const fetchScratchersDocument = async (url) => {
   throw new Error(`Fetch failed. Tried ${errors.length} proxies. ${errors.join(' | ')}`);
 };
 
+const fetchViaProxies = async (url, statusLabel) => {
+  const errors = [];
+  for (const proxy of proxies) {
+    try {
+      if (statusLabel) setStatus(`${statusLabel} via ${proxy.name}...`);
+      const res = await fetch(proxy.buildUrl(url));
+      const text = await res.text();
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const parsed = proxy.parse ? proxy.parse(text) : { content: text, warning: '' };
+      const content = parsed.content?.trim() || '';
+      if (!content) {
+        throw new Error(parsed.warning || 'Empty response');
+      }
+      return content;
+    } catch (error) {
+      errors.push(`${proxy.name}: ${error.message}`);
+    }
+  }
+  throw new Error(`Fetch failed. Tried ${errors.length} proxies. ${errors.join(' | ')}`);
+};
+
 const normalizeName = (value) => value.replace(/\s+/g, ' ').trim();
 
 const parseGameInfoFromUrl = (url) => {
@@ -105,6 +128,139 @@ const extractScratchersFromLinks = (doc, baseUrl) => {
   return Array.from(items.values());
 };
 
+const extractScratchersFromText = (rawText, baseUrl) => {
+  const items = new Map();
+  if (!rawText) return [];
+  const urlMatches = rawText.matchAll(
+    /https?:\/\/[^"'\s)]+\/scratchers\/\$?\d+\/[a-z0-9-]+/gi
+  );
+  const pathMatches = rawText.matchAll(/\/scratchers\/\$?\d+\/[a-z0-9-]+/gi);
+
+  const addUrl = (url) => {
+    try {
+      const absoluteUrl = new URL(url, baseUrl).toString();
+      const { price, gameNumber, nameFromSlug } = parseGameInfoFromUrl(absoluteUrl);
+      const displayName = gameNumber ? `${nameFromSlug} (${gameNumber})` : nameFromSlug;
+      if (!items.has(absoluteUrl)) {
+        items.set(absoluteUrl, {
+          price,
+          name: displayName || 'Unknown scratcher',
+          url: absoluteUrl,
+        });
+      }
+    } catch (error) {
+      return;
+    }
+  };
+
+  for (const match of urlMatches) {
+    addUrl(match[0]);
+  }
+  for (const match of pathMatches) {
+    addUrl(match[0]);
+  }
+
+  return Array.from(items.values());
+};
+
+const findScratchersApiUrl = (rawText, baseUrl) => {
+  if (!rawText) return '';
+  const absoluteMatch = rawText.match(
+    /https?:\/\/www\.calottery\.com\/sitecore\/api\/ssc\/scratchers\/[a-z0-9/?&=_-]+/i
+  );
+  if (absoluteMatch) return absoluteMatch[0];
+  const relativeMatch = rawText.match(/\/sitecore\/api\/ssc\/scratchers\/[a-z0-9/?&=_-]+/i);
+  if (relativeMatch) return new URL(relativeMatch[0], baseUrl).toString();
+  return '';
+};
+
+const parseScratchersFromApiData = (data, baseUrl) => {
+  if (!data) return [];
+  const pickArray = (value) => {
+    if (Array.isArray(value)) return value;
+    if (!value || typeof value !== 'object') return [];
+    const candidates = [
+      value.scratchers,
+      value.games,
+      value.data,
+      value.results,
+      value.items,
+      value.Scratchers,
+      value.Games,
+      value.Data,
+      value.Results,
+    ];
+    for (const candidate of candidates) {
+      if (Array.isArray(candidate)) return candidate;
+    }
+    return [];
+  };
+
+  const records = Array.isArray(data) ? data : pickArray(data);
+  return records
+    .map((record) => {
+      const rawUrl =
+        record.gameUrl ||
+        record.gameURL ||
+        record.url ||
+        record.link ||
+        record.detailUrl ||
+        record.detailURL ||
+        record.detailPageUrl ||
+        '';
+      const name =
+        record.gameName ||
+        record.name ||
+        record.title ||
+        record.GameName ||
+        record.Name ||
+        record.Title ||
+        '';
+      const gameNumber =
+        record.gameNumber ||
+        record.GameNumber ||
+        record.gameId ||
+        record.GameId ||
+        record.number ||
+        '';
+      const price =
+        record.price ||
+        record.Price ||
+        record.ticketPrice ||
+        record.TicketPrice ||
+        record.cost ||
+        record.Cost ||
+        '';
+      if (!rawUrl || !name) return null;
+      let url = rawUrl;
+      try {
+        url = new URL(rawUrl, baseUrl).toString();
+      } catch (error) {
+        return null;
+      }
+      const priceLabel =
+        typeof price === 'number' || /^\d/.test(String(price)) ? `$${price}` : price || '—';
+      const displayName = gameNumber ? `${name} (${gameNumber})` : name;
+      return {
+        price: priceLabel,
+        name: displayName,
+        url,
+      };
+    })
+    .filter(Boolean);
+};
+
+const extractScratchers = (doc, rawText, baseUrl) => {
+  const items = new Map();
+  const linkItems = extractScratchersFromLinks(doc, baseUrl);
+  linkItems.forEach((item) => items.set(item.url, item));
+  const textItems = extractScratchersFromText(rawText, baseUrl);
+  textItems.forEach((item) => {
+    if (!items.has(item.url)) items.set(item.url, item);
+  });
+  return Array.from(items.values());
+};
+
 const renderScratchers = (scratchers) => {
   if (!scratchersBody) return;
   if (!scratchers.length) {
@@ -140,8 +296,24 @@ const sortScratchers = (scratchers) =>
 const loadScratchers = async () => {
   try {
     setStatus('Loading scratchers...');
-    const { doc } = await fetchScratchersDocument('https://www.calottery.com/en/scratchers');
-    const scratchers = sortScratchers(extractScratchersFromLinks(doc, window.location.href));
+    const sourceUrl = 'https://www.calottery.com/en/scratchers';
+    const { doc, rawText } = await fetchScratchersDocument(sourceUrl);
+    const baseUrl = new URL(sourceUrl).origin;
+    let scratchers = [];
+    const apiUrl = findScratchersApiUrl(rawText, baseUrl);
+    if (apiUrl) {
+      try {
+        const apiResponse = await fetchViaProxies(apiUrl, 'Fetching scratchers data');
+        const apiData = JSON.parse(apiResponse);
+        scratchers = parseScratchersFromApiData(apiData, baseUrl);
+      } catch (error) {
+        scratchers = [];
+      }
+    }
+    if (!scratchers.length) {
+      scratchers = extractScratchers(doc, rawText, baseUrl);
+    }
+    scratchers = sortScratchers(scratchers);
     renderScratchers(scratchers);
     setStatus(`Loaded ${scratchers.length} scratchers.`);
   } catch (error) {
