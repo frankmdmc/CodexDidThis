@@ -1,5 +1,10 @@
 const scratchersBody = document.getElementById('scratchersBody');
 const statusMessage = document.getElementById('status');
+const ignoreUnder500Toggle = document.getElementById('ignoreUnder500Scratchers');
+const applyTaxToggle = document.getElementById('applyTaxScratchers');
+const taxRateInput = document.getElementById('taxRateScratchers');
+
+let scratchersSource = [];
 
 const setStatus = (message = '') => {
   if (statusMessage) statusMessage.textContent = message;
@@ -178,7 +183,10 @@ const findScratchersApiUrl = (rawText, baseUrl) => {
   return '';
 };
 
-const calculateStatsFromPrizeTiers = (prizeTiers, ticketPrice) => {
+const calculateStatsFromPrizeTiers = (prizeTiers, ticketPrice, options = {}) => {
+  const ignoreUnder500 = options.ignoreUnder500 ?? false;
+  const applyTax = options.applyTax ?? false;
+  const taxRate = Number(options.taxRate) || 0;
   if (!prizeTiers.length) {
     return { calculatedCashOdds: null, expectedValue: null, claimedExpectedValue: null };
   }
@@ -192,7 +200,14 @@ const calculateStatsFromPrizeTiers = (prizeTiers, ticketPrice) => {
     const total = Number(tier.totalNumberOfPrizes) || 0;
     const remaining = Number(tier.numberOfPrizesPending) || 0;
     const odds = Number(tier.odds);
-    const value = Number(tier.value) || 0;
+    const rawValue = Number(tier.value) || 0;
+    let value = rawValue;
+    if (ignoreUnder500 && rawValue > 0 && rawValue < 500) {
+      value = 0;
+    }
+    if (applyTax && value > 0) {
+      value = value * (1 - taxRate);
+    }
     if (total && Number.isFinite(odds)) {
       ticketEstimates.push(odds * total);
     }
@@ -253,18 +268,42 @@ const parseScratchersFromGamesApi = (data, baseUrl) => {
         typeof price === 'number' || /^\d/.test(String(price)) ? `$${price}` : price || '—';
       const displayName = gameNumber ? `${name} (${gameNumber})` : name;
       const numericPrice = Number(price);
-      const stats = calculateStatsFromPrizeTiers(prizeTiers, numericPrice);
       return {
         price: priceLabel,
         name: displayName,
         url,
+        ticketPrice: numericPrice,
+        prizeTiers,
         claimedCashOdds,
-        calculatedCashOdds: stats.calculatedCashOdds,
-        claimedExpectedValue: stats.claimedExpectedValue,
-        expectedValue: stats.expectedValue,
       };
     })
     .filter(Boolean);
+};
+
+const getActiveOptions = () => ({
+  ignoreUnder500: ignoreUnder500Toggle?.checked ?? false,
+  applyTax: applyTaxToggle?.checked ?? false,
+  taxRate: (parseFloat(taxRateInput?.value || '0') || 0) / 100,
+});
+
+const enrichScratchersForDisplay = (scratchers) => {
+  const options = getActiveOptions();
+  return scratchers.map((scratcher) => {
+    if (!Array.isArray(scratcher.prizeTiers) || !Number.isFinite(scratcher.ticketPrice)) {
+      return scratcher;
+    }
+    const stats = calculateStatsFromPrizeTiers(
+      scratcher.prizeTiers,
+      scratcher.ticketPrice,
+      options
+    );
+    return {
+      ...scratcher,
+      calculatedCashOdds: stats.calculatedCashOdds,
+      claimedExpectedValue: stats.claimedExpectedValue,
+      expectedValue: stats.expectedValue,
+    };
+  });
 };
 
 const parseScratchersFromApiData = (data, baseUrl) => {
@@ -358,7 +397,7 @@ const renderScratchers = (scratchers) => {
   if (!scratchersBody) return;
   if (!scratchers.length) {
     scratchersBody.innerHTML =
-      '<tr><td colspan="5">No scratchers found. Try again later.</td></tr>';
+      '<tr><td colspan="7">No scratchers found. Try again later.</td></tr>';
     return;
   }
 
@@ -453,13 +492,22 @@ const loadScratchers = async () => {
     if (!scratchers.length) {
       scratchers = extractScratchers(doc, rawText, baseUrl);
     }
-    scratchers = sortScratchers(scratchers);
-    renderScratchers(scratchers);
+    scratchersSource = sortScratchers(scratchers);
+    renderScratchers(enrichScratchersForDisplay(scratchersSource));
     setStatus(`Loaded ${scratchers.length} scratchers.`);
   } catch (error) {
     setStatus(`Error: ${error.message}`);
     renderScratchers([]);
   }
 };
+
+const rerenderScratchers = () => {
+  if (!scratchersSource.length) return;
+  renderScratchers(enrichScratchersForDisplay(scratchersSource));
+};
+
+ignoreUnder500Toggle?.addEventListener('change', rerenderScratchers);
+applyTaxToggle?.addEventListener('change', rerenderScratchers);
+taxRateInput?.addEventListener('input', rerenderScratchers);
 
 loadScratchers();
