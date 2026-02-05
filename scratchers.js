@@ -27,7 +27,11 @@ const proxies = [
   },
   {
     name: 'r.jina.ai',
-    buildUrl: (url) => `https://r.jina.ai/http://${url.replace(/^https?:\/\//, '')}`,
+    buildUrl: (url) => {
+      const scheme = url.startsWith('https://') ? 'https://' : 'http://';
+      const normalized = url.replace(/^https?:\/\//, '');
+      return `https://r.jina.ai/${scheme}${normalized}`;
+    },
   },
 ];
 
