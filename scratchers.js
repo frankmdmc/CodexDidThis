@@ -5,12 +5,30 @@ const applyTaxToggle = document.getElementById('applyTaxScratchers');
 const taxRateInput = document.getElementById('taxRateScratchers');
 
 let scratchersSource = [];
+const FETCH_TIMEOUT_MS = 12000;
 
 const setStatus = (message = '') => {
   if (statusMessage) statusMessage.textContent = message;
 };
 
+const fetchWithTimeout = (url) =>
+  fetch(url, {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
 const proxies = [
+  {
+    name: 'direct',
+    buildUrl: (url) => url,
+  },
+  {
+    name: 'corsproxy.io',
+    buildUrl: (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+  },
+  {
+    name: 'codetabs',
+    buildUrl: (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+  },
   {
     name: 'allorigins raw',
     buildUrl: (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
@@ -53,7 +71,7 @@ const fetchScratchersDocument = async (url) => {
   for (const proxy of proxies) {
     try {
       setStatus(`Fetching scratchers via ${proxy.name}...`);
-      const res = await fetch(proxy.buildUrl(url));
+      const res = await fetchWithTimeout(proxy.buildUrl(url));
       const text = await res.text();
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
@@ -78,7 +96,7 @@ const fetchViaProxies = async (url, statusLabel) => {
   for (const proxy of proxies) {
     try {
       if (statusLabel) setStatus(`${statusLabel} via ${proxy.name}...`);
-      const res = await fetch(proxy.buildUrl(url));
+      const res = await fetchWithTimeout(proxy.buildUrl(url));
       const text = await res.text();
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
@@ -94,6 +112,29 @@ const fetchViaProxies = async (url, statusLabel) => {
     }
   }
   throw new Error(`Fetch failed. Tried ${errors.length} proxies. ${errors.join(' | ')}`);
+};
+
+const fetchJsonViaProxies = async (url, statusLabel) => {
+  const errors = [];
+  for (const proxy of proxies) {
+    try {
+      if (statusLabel) setStatus(`${statusLabel} via ${proxy.name}...`);
+      const res = await fetchWithTimeout(proxy.buildUrl(url));
+      const text = await res.text();
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const parsed = proxy.parse ? proxy.parse(text) : { content: text, warning: '' };
+      const content = parsed.content?.trim() || '';
+      if (!content) {
+        throw new Error(parsed.warning || 'Empty response');
+      }
+      return JSON.parse(content);
+    } catch (error) {
+      errors.push(`${proxy.name}: ${error.message}`);
+    }
+  }
+  throw new Error(`JSON fetch failed. Tried ${errors.length} sources. ${errors.join(' | ')}`);
 };
 
 const normalizeName = (value) => value.replace(/\s+/g, ' ').trim();
@@ -464,37 +505,50 @@ const loadScratchers = async () => {
   try {
     setStatus('Loading scratchers...');
     const sourceUrl = 'https://www.calottery.com/en/scratchers';
-    const { doc, rawText } = await fetchScratchersDocument(sourceUrl);
     const baseUrl = new URL(sourceUrl).origin;
     let scratchers = [];
+    let apiError = '';
+
     try {
-      const apiResponse = await fetchViaProxies(
+      const apiData = await fetchJsonViaProxies(
         'https://www.calottery.com/api/games/scratchers',
         'Fetching scratchers data'
       );
-      const apiData = JSON.parse(apiResponse);
       scratchers = parseScratchersFromGamesApi(apiData, baseUrl);
     } catch (error) {
+      apiError = error.message;
       scratchers = [];
     }
+
     if (!scratchers.length) {
+      const { doc, rawText } = await fetchScratchersDocument(sourceUrl);
       const apiUrl = findScratchersApiUrl(rawText, baseUrl);
       if (apiUrl) {
         try {
-          const apiResponse = await fetchViaProxies(apiUrl, 'Fetching scratchers data');
-          const apiData = JSON.parse(apiResponse);
+          const apiData = await fetchJsonViaProxies(apiUrl, 'Fetching scratchers data');
           scratchers = parseScratchersFromApiData(apiData, baseUrl);
         } catch (error) {
+          apiError = apiError ? `${apiError} | ${error.message}` : error.message;
           scratchers = [];
         }
       }
+      if (!scratchers.length) {
+        scratchers = extractScratchers(doc, rawText, baseUrl);
+      }
     }
-    if (!scratchers.length) {
-      scratchers = extractScratchers(doc, rawText, baseUrl);
-    }
+
     scratchersSource = sortScratchers(scratchers);
     renderScratchers(enrichScratchersForDisplay(scratchersSource));
-    setStatus(`Loaded ${scratchers.length} scratchers.`);
+    const hasPrizeData = scratchersSource.some((scratcher) => Array.isArray(scratcher.prizeTiers));
+    if (hasPrizeData) {
+      setStatus(`Loaded ${scratchers.length} scratchers with prize data.`);
+    } else if (apiError) {
+      setStatus(
+        `Loaded ${scratchers.length} scratchers, but prize data is unavailable. API errors: ${apiError}`
+      );
+    } else {
+      setStatus(`Loaded ${scratchers.length} scratchers.`);
+    }
   } catch (error) {
     setStatus(`Error: ${error.message}`);
     renderScratchers([]);
