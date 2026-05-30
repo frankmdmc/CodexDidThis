@@ -26,6 +26,7 @@
 <main>
   <nav class="helper">
     <a href="scratchers.html">Scratchers overview</a>
+    · <a href="example-ticket.html">Example ticket sandbox</a>
   </nav>
   <h1>California Scratch Ticket Expected Value</h1>
   <p class="helper">Pick a known scratcher or paste any California Lottery scratcher URL to estimate expected ticket value from the remaining prizes table.</p>
@@ -37,6 +38,18 @@
 
   <label for="ticketUrl">Ticket URL</label>
   <input id="ticketUrl" type="text" placeholder="https://www.calottery.com/..." />
+  <label>
+    <input id="includeSmallPrizes" type="checkbox" checked />
+    Include prizes under $500 in expected value
+  </label>
+  <label>
+    <input id="applyTax" type="checkbox" />
+    Apply post-tax prize values
+  </label>
+  <div class="helper">
+    Tax rate (California allows withholding on prizes; enter your estimated %):
+    <input id="taxRate" type="text" value="24" style="max-width: 120px;" />%
+  </div>
   <button id="calc" type="button">Calculate</button>
   <div id="status" role="status" aria-live="polite"></div>
   <div id="results" aria-live="polite"></div>
